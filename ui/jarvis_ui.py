@@ -56,13 +56,25 @@ from PyQt6.QtWidgets import (
 from core.greeting import ADJECTIVES, greeting_for
 from core.hotkey import GlobalHotkey
 from core.notifier import notify
+from core.platform import (
+    autostart_is_configured,
+    is_linux,
+    is_windows,
+    linux_autostart_dir,
+    linux_autostart_file,
+    repo_root,
+    windows_startup_dir,
+)
+from core.agent import AgentWorker, OllamaClient
 from core.state import StateManager
 from core.themes import ThemeManager
 from core.settings import SettingsManager
 from core.tray import Tray
 from core.version import get_app_version
 from ui.mode_card import ModeCard
+from ui.ascii_neural_net import AsciiNeuralNet
 from ui.news_panel import NewsPanel
+from ui.chat_panel import ChatPanel
 from ui.news_reader import NewsReaderView
 from ui.settings_dialog import SettingsDialog, ConnectDialog
 
@@ -356,12 +368,40 @@ class JarvisUI(QWidget):
         )
         self._tray.show()
 
-        # Atajo global Ctrl+Shift+Espacio: convoca/oculta el launcher
-        self._hotkey = GlobalHotkey(self.toggle_visibility)
+        # Atajo Ctrl+Shift+Espacio: convoca/oculta el launcher.
+        # Windows: global real. Linux: QShortcut interno (requiere foco;
+        # para global real asignar `jarvis` en Ajustes > Teclado).
+        self._hotkey = GlobalHotkey(self.toggle_visibility, parent_widget=self)
         app = QApplication.instance()
         if app is not None:
             app.installNativeEventFilter(self._hotkey)
             self._hotkey.register()
+
+        # Atajo Ctrl+J: ir al chat del asistente (ESPEC §3.6)
+        from PyQt6.QtGui import QKeySequence, QShortcut
+
+        self._chat_shortcut = QShortcut(QKeySequence("Ctrl+J"), self)
+        self._chat_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self._chat_shortcut.activated.connect(self._toggle_chat)
+
+        # Agente IA local (Fase 1): worker en hilo propio, UI solo por señales
+        self._agent_worker = AgentWorker(
+            OllamaClient(
+                base_url=self._settings.agent_url,
+                model=self._settings.agent_model,
+                timeout_s=self._settings.agent_timeout_s,
+            ),
+            {"repo_root": repo_root(), "model": self._settings.agent_model},
+            max_steps=self._settings.agent_max_steps,
+        )
+        self._agent_worker.agentReply.connect(self._chat_panel.agentReply)
+        self._agent_worker.approvalRequested.connect(self._chat_panel.show_proposal)
+        self._agent_worker.blockedNotice.connect(self._chat_panel.show_blocked)
+        self._agent_worker.agentStatus.connect(self._chat_panel.set_status)
+        self._agent_worker.agentStatus.connect(self._on_agent_status_update)
+        self._agent_worker.agentError.connect(self._chat_panel.agentError)
+        self._agent_worker.logEvent.connect(self._append_agent_log)
+        self._chat_panel.decisionMade.connect(self._on_agent_decision)
 
     def show_and_raise(self) -> None:
         """Muestra la ventana forzando que quede al frente y con foco."""
@@ -388,8 +428,66 @@ class JarvisUI(QWidget):
                 app.removeNativeEventFilter(self._hotkey)
         except Exception:  # pragma: no cover
             pass
+        try:
+            if hasattr(self, "_agent_worker"):
+                self._agent_worker.stop()
+                self._agent_worker.wait(3000)
+        except Exception:  # pragma: no cover
+            pass
         self._tray.hide()
         app.quit() if (app := QApplication.instance()) is not None else None
+
+    # ------------------------------------------------------------------
+    # Asistente IA local (Fase 1)
+    # ------------------------------------------------------------------
+
+    def _toggle_chat(self) -> None:
+        """Ctrl+J / botón 💬: enfoca la pestaña del asistente."""
+        if hasattr(self, "_side_tabs") and hasattr(self, "_chat_panel"):
+            self.show_and_raise()
+            self._side_tabs.setCurrentWidget(self._chat_panel)
+
+    def _on_agent_message(self, text: str) -> None:
+        if not self._settings.agent_enabled:
+            self._chat_panel.agentError(
+                "El asistente está desactivado (rueda ⚙ → Asistente)."
+            )
+            return
+        self._agent_worker.start_turn(text)
+
+    def _on_agent_decision(self, proposal_id: str, decision: str, new_args) -> None:
+        self._agent_worker.decide(proposal_id, decision, new_args)
+
+    def _on_agent_status_update(self, status: str) -> None:
+        if hasattr(self, "_neural_net_widget"):
+            self._neural_net_widget.set_status(status)
+
+    def clear_agent_chat(self) -> None:
+        """Vacía historial del worker y burbujas (Ajustes → Asistente)."""
+        self._agent_worker.clear_history()
+        self._chat_panel.clear()
+
+    def apply_agent_settings(self) -> None:
+        """Relee settings agent.* hacia cliente/ctx/worker (en vivo)."""
+        client = self._agent_worker._client
+        client.base_url = self._settings.agent_url
+        client.model = self._settings.agent_model
+        client.timeout_s = self._settings.agent_timeout_s
+        self._agent_worker.update_ctx(model=self._settings.agent_model)
+        self._agent_worker.set_max_steps(self._settings.agent_max_steps)
+
+    def _append_agent_log(self, event: dict) -> None:
+        """Persiste eventos del agente (ESPEC §3.8, append-only)."""
+        import json as _json
+
+        path = self._settings.agent_log_path
+        if not os.path.isabs(path):
+            path = os.path.join(repo_root(), path)
+        try:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(_json.dumps(event, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------
     # Ocultar a bandeja en vez de cerrar (opcion C del diseno)
@@ -451,10 +549,10 @@ class JarvisUI(QWidget):
         self._build_title()
         self._center_layout.addWidget(self._title_container, 1)
 
-        # Cards (centradas, respirables pero compactas)
-        self._build_cards()
+        # Asistente estilo Red Neuronal 2.D ASCII central
+        self._build_neural_net()
         self._center_layout.addWidget(
-            self._cards_container, 3, Qt.AlignmentFlag.AlignCenter
+            self._neural_net_widget, 3, Qt.AlignmentFlag.AlignCenter
         )
 
         # Estado (abajo)
@@ -467,6 +565,20 @@ class JarvisUI(QWidget):
         self._news_panel.widthChanged.connect(self._on_news_width_changed)
         self._news_panel.readerRequested.connect(self._open_reader)
         self._news_panel.set_initial_width()
+
+        # ---- Chat del asistente (Fase 1) ----
+        self._chat_panel = ChatPanel(self._settings, self._theme, self)
+        self._chat_panel.messageSent.connect(self._on_agent_message)
+        self._chat_panel.decisionMade.connect(self._on_agent_decision)
+
+        # ---- Lateral: pestañas Noticias | Asistente (ESPEC §3.6) ----
+        from PyQt6.QtWidgets import QTabWidget
+
+        self._side_tabs = QTabWidget(self)
+        self._side_tabs.setDocumentMode(True)
+        self._side_tabs.addTab(self._news_panel, "Noticias")
+        self._side_tabs.addTab(self._chat_panel, "Asistente")
+        self._side_tabs.setCurrentIndex(0)
 
         # ---- Lector de articulos (fullscreen, creado bajo demanda) ----
         self._news_reader: NewsReaderView | None = None
@@ -495,6 +607,14 @@ class JarvisUI(QWidget):
         self._logo_label = logo
         self._top_layout.addWidget(logo)
         self._top_layout.addStretch()
+
+        # Chat del asistente (Fase 1)
+        self._chat_btn = QPushButton("💬", self._center_widget)
+        self._chat_btn.setFixedSize(36, 36)
+        self._chat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._chat_btn.setToolTip("Asistente IA local (Ctrl+J)")
+        self._chat_btn.clicked.connect(self._toggle_chat)
+        self._top_layout.addWidget(self._chat_btn)
 
         # Ruedita de ajustes (tema + noticias)
         self._settings_btn = QPushButton("⚙", self._center_widget)
@@ -529,7 +649,7 @@ class JarvisUI(QWidget):
                 f"color: {accent}; font-size: 14px; font-weight: bold; letter-spacing: 4px;"
             )
         corners = "border: none; background: transparent;"
-        for btn in (self._settings_btn, self._close_btn):
+        for btn in (self._settings_btn, self._close_btn, self._chat_btn):
             btn.setStyleSheet(
                 f"QPushButton {{ {corners} color: {them.text_dim}; font-size: 15px; }}"
                 f"QPushButton:hover {{ color: {accent}; }}"
@@ -568,33 +688,10 @@ class JarvisUI(QWidget):
             "font-size: 20px; font-weight: 300; letter-spacing: 1px;"
         )
 
-    def _build_cards(self) -> None:
-        self._cards_container = QWidget(self._center_widget)
-        self._cards_container.setStyleSheet("background: transparent;")
-        self._cards_layout = QHBoxLayout(self._cards_container)
-        self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        self._cards_layout.setSpacing(26)
-        self._cards_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
+    def _build_neural_net(self) -> None:
+        """Construye el núcleo asistente de red neuronal 2D ASCII central."""
+        self._neural_net_widget = AsciiNeuralNet(self._theme, self._center_widget)
         self._mode_cards: dict[str, ModeCard] = {}
-        modes = self._config.get("modes", {})
-        for idx, (mode_id, mode_data) in enumerate(modes.items()):
-            card = ModeCard(
-                mode_id=mode_id,
-                name=mode_data.get("name", mode_id),
-                icon=mode_data.get("icon", "?"),
-                color=mode_data.get("color", "#00FFFF"),
-                description=mode_data.get("description", ""),
-                theme=self._theme,
-                parent=self._cards_container,
-            )
-            apps = mode_data.get("apps", [])
-            card.set_app_count(len(apps))
-            card.modeClicked.connect(self._on_card_clicked)
-            self._mode_cards[mode_id] = card
-            self._cards_layout.addWidget(card)
-            # Entrada escalonada
-            card.play_entrance(delay_ms=250 + idx * 140)
 
     def _build_status_bar(self) -> None:
         self._status_bar = QHBoxLayout()
@@ -618,29 +715,47 @@ class JarvisUI(QWidget):
     # Panel de noticias
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Lateral: Noticias | Asistente
+    # ------------------------------------------------------------------
+
     def _apply_news_panel_position(self) -> None:
-        """Acomoda el panel a la izquierda o derecha segun los ajustes."""
-        # Remover si ya esta
+        """Acomoda el lateral (pestañas) a izq/der segun los ajustes.
+
+        Si las noticias están desactivadas, el lateral muestra solo la
+        pestaña del asistente (tabBar oculta). Mantiene el nombre/API por
+        compatibilidad con el diálogo de ajustes (Bug G-001).
+        """
         try:
-            self._root_layout.removeWidget(self._news_panel)
+            self._root_layout.removeWidget(self._side_tabs)
         except Exception:  # noqa: BLE001
             pass
         self._root_layout.removeWidget(self._center_widget)
 
+        self._refresh_side_tabs()
         pos = self._settings.news_position
-        if not self._settings.news_enabled:
-            # Solo area central (sin panel)
-            if self._news_panel is not None:
-                self._news_panel.hide()
+        if pos == "left":
+            self._root_layout.addWidget(self._side_tabs, 0)
             self._root_layout.addWidget(self._center_widget, 1)
-            return
+        else:
+            self._root_layout.addWidget(self._center_widget, 1)
+            self._root_layout.addWidget(self._side_tabs, 0)
+        self._side_tabs.setFixedWidth(self._settings.news_width)
 
-        self._news_panel.show()
-        idx = 0 if pos == "left" else 2
-        self._root_layout.insertWidget(idx, self._news_panel, 0)
-        self._root_layout.insertWidget(1, self._center_widget, 1)
-        # Forzar medida inicial
-        self._news_panel.set_initial_width()
+    def _refresh_side_tabs(self) -> None:
+        """Sincroniza las pestañas con news_enabled (ESPEC §3.6)."""
+        has_news = self._side_tabs.indexOf(self._news_panel) != -1
+        if self._settings.news_enabled and not has_news:
+            self._side_tabs.insertTab(0, self._news_panel, "Noticias")
+            self._news_panel.show()
+            self._news_panel.set_initial_width()
+        elif not self._settings.news_enabled and has_news:
+            self._side_tabs.removeTab(self._side_tabs.indexOf(self._news_panel))
+            self._news_panel.hide()
+        bar = self._side_tabs.tabBar()
+        if bar is not None:
+            bar.setVisible(self._side_tabs.count() > 1)
+        self._style_side_tabs()
 
     def apply_news_panel(self) -> None:
         """Aplica posicion/visibilidad del panel (API publica, usado al cambiar
@@ -654,6 +769,8 @@ class JarvisUI(QWidget):
 
     def _on_news_width_changed(self, value: int) -> None:
         self._settings.news_width = value
+        if hasattr(self, "_side_tabs"):
+            self._side_tabs.setFixedWidth(value)
 
     # ------------------------------------------------------------------
     # Lector de articulos (spec v2 pts. 3-4)
@@ -719,14 +836,7 @@ class JarvisUI(QWidget):
             )
 
     def _startup_configured(self) -> bool:
-        startup_dir = os.path.join(
-            os.environ["APPDATA"],
-            r"Microsoft\Windows\Start Menu\Programs\Startup",
-        )
-        return any(
-            os.path.exists(os.path.join(startup_dir, f))
-            for f in ("JarvisLauncher.vbs", "JarvisLauncher.bat")
-        )
+        return autostart_is_configured()
 
     def _open_connect_dialog(self) -> None:
         dlg = ConnectDialog(self._settings, self._theme, self)
@@ -749,8 +859,26 @@ class JarvisUI(QWidget):
         self._apply_theme_particles()
         self._apply_theme_styles()
         self._news_panel.refresh_theme()
+        if hasattr(self, "_neural_net_widget"):
+            self._neural_net_widget._theme = self._theme
+            self._neural_net_widget.refresh_theme()
+        if hasattr(self, "_chat_panel"):
+            self._chat_panel.refresh_theme()
+        if hasattr(self, "_side_tabs"):
+            self._style_side_tabs()
         self._tray.set_accent(self._theme.theme.accent)
         self.update()
+
+    def _style_side_tabs(self) -> None:
+        """Pestañas Noticias|Asistente con colores del tema (sin hardcode)."""
+        them = self._theme.theme
+        self._side_tabs.setStyleSheet(
+            f"QTabWidget::pane {{ background: {them.bg_alt}; border: none; }}"
+            f"QTabBar::tab {{ background: transparent; color: {them.text_dim};"
+            f"padding: 6px 14px; font-size: 11px; letter-spacing: 1px; }}"
+            f"QTabBar::tab:selected {{ color: {them.accent};"
+            f"border-bottom: 2px solid {them.accent}; }}"
+        )
 
     def _apply_theme_styles(self) -> None:
         them = self._theme.theme
@@ -914,10 +1042,13 @@ class JarvisUI(QWidget):
     # ------------------------------------------------------------------
 
     def _toggle_startup(self) -> None:
-        startup_dir = os.path.join(
-            os.environ["APPDATA"],
-            r"Microsoft\Windows\Start Menu\Programs\Startup",
-        )
+        if is_linux():
+            self._toggle_startup_linux()
+        else:
+            self._toggle_startup_windows()
+
+    def _toggle_startup_windows(self) -> None:
+        startup_dir = windows_startup_dir()
         vbs_path = os.path.join(startup_dir, "JarvisLauncher.vbs")
         bat_path = os.path.join(startup_dir, "JarvisLauncher.bat")
 
@@ -928,10 +1059,7 @@ class JarvisUI(QWidget):
             self._status_label.setText("AUTO-INICIO DESACTIVADO")
             self._setup_btn.setText("Configurar auto-inicio")
         else:
-            main_script = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "main.py",
-            )
+            main_script = os.path.join(repo_root(), "main.py")
             python_exe = sys.executable
             vbs_content = (
                 f'Set WshShell = CreateObject("WScript.Shell")\n'
@@ -946,6 +1074,40 @@ class JarvisUI(QWidget):
                 self._status_label.setText(
                     "PERMISOS INSUFICIENTES - EJECUTA COMO ADMIN"
                 )
+
+    def _toggle_startup_linux(self) -> None:
+        """Activa/desactiva ~/.config/autostart/jarvis-launcher.desktop."""
+        desktop_path = linux_autostart_file()
+        if os.path.exists(desktop_path):
+            try:
+                os.remove(desktop_path)
+            except OSError:
+                self._status_label.setText("NO SE PUDO ELIMINAR EL AUTOSTART")
+                return
+            self._status_label.setText("AUTO-INICIO DESACTIVADO")
+            self._setup_btn.setText("Configurar auto-inicio")
+            return
+        try:
+            os.makedirs(linux_autostart_dir(), exist_ok=True)
+            main_script = os.path.join(repo_root(), "main.py")
+            python_exe = sys.executable
+            content = (
+                "[Desktop Entry]\n"
+                "Type=Application\n"
+                "Name=J.A.R.V.I.S. Launcher\n"
+                "Comment=Lanza tus modos Gaming/Trabajo/Estudio al iniciar sesion\n"
+                f"Exec={python_exe} {main_script}\n"
+                f"Path={repo_root()}\n"
+                "Terminal=false\n"
+                "X-GNOME-Autostart-enabled=true\n"
+                "Categories=Utility;\n"
+            )
+            with open(desktop_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self._status_label.setText("AUTO-INICIO ACTIVADO")
+            self._setup_btn.setText("Desactivar auto-inicio")
+        except OSError:
+            self._status_label.setText("NO SE PUDO ESCRIBIR EN AUTOSTART")
 
     # ------------------------------------------------------------------
     # Timer principal

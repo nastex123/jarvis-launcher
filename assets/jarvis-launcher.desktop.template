@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=J.A.R.V.I.S. Launcher
+Comment=Lanza tus modos Gaming/Trabajo/Estudio (instalado con install.py)
+Exec=@@VENV_PY@@ @@REPO@@/main.py
+Path=@@REPO@@
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+# Plantilla usada por install.py: los campos Exec/Path se generan al instalar.
+# No editar a mano; ejecuta `python3 install.py`.

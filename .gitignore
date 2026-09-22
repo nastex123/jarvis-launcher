@@ -25,3 +25,5 @@ desktop.ini
 # Estado generado
 state.json
 settings.json
+config.linux.json
+agent_log.jsonl

@@ -82,10 +82,30 @@
 - [x] v2.0.3: branding corregido en notas del release v2.0.2 de GitHub (`gh release edit`)
 - [x] v2.0.3: releases v2.0.0/v2.0.1/v2.0.2 con notas **UTF-8 sin BOM** (mojibake reparado en GitHub) + regla en `docs/RELEASE.md`
 - [x] v2.0.3: release publicada (Latest) + `git fetch --tags` → versión automática muestra **2.0.3**
+- [x] Linux: `core/platform.py` — helpers dual (autostart, .desktop, distro/sesion)
+- [x] Linux: `core/launcher.py` dual (webbrowser, start_new_session, .desktop + alias)
+- [x] Linux: `core/hotkey.py` dual (QShortcut interno), `notifier.py` (notify-send),
+      `version.py` (creationflags solo Windows), `config.py` (config.linux.json)
+- [x] Linux: `ui/jarvis_ui.py` autostart dual + `main.py` fuentes Linux
+- [x] Linux: `install.py` todo-en-uno (venv, jarvis, .desktop, autostart, smoke) —
+      verificado punta a punta + `config.linux.example.json` + template .desktop
+- [x] Linux: docs ADR-012, README, CHANGELOG [Unreleased], `.gitignore` (config.linux.json)
+- [x] Linux: fix stylesheet f-string en `main.py` (`%s`, bug NameError background)
+- [x] Agente G-008: modelo fabricaba `<tool_result>` como texto (sin tarjeta,
+      datos inventados) — `looks_fabricated` + re-pregunta acotada (máx 2) +
+      `AGENT_SYS_V2` (reglas 8–9); ESPEC §3.4.2; tests C10–C11; verificado en
+      vivo (tarjeta → dato real 2728 MB → respuesta natural)
+- [x] Agente G-009: modelo en bucle de disculpas sin actuar (regla 8 de V2 lo
+      bloqueaba) — `AGENT_SYS_V3` (JSON-único + few-shot + lista de tools),
+      extracción en 3 niveles, corrección con ejemplo; ESPEC §3.4.3; tests
+      C12–C13; verificado en vivo (tarjeta → 2586 MB reales)
 
 ## En progreso
 
-- [ ] (vacío — sin tareas activas)
+- [x] Documentación del asistente IA local: ADR-013, ADR-014, ESPEC (incl.
+      §3.4.1 fallback JSON), PLAN-fases, TEST-agente, Arquitectura §8,
+      README índice, CHANGELOG, TODO
+- [ ] Checklist manual M1–M10 del agente en GUI real (TEST-agente.md)
 
 ## Pendiente
 
@@ -103,6 +123,53 @@
 - [ ] Verificacion de toasts de Windows 10/11
 - [ ] Prueba de pantalla completa real y posicion en monitores multiples
 - [ ] Revisar uso de CPU del core/beam en pantallas grandes
+
+## Asistente IA local — Fase 1 (Chat + Sistema)
+
+Contrato: `docs/ESPEC-agente-fase1.md`. Decisiones: ADR-013/ADR-014.
+Roadmap: `docs/PLAN-fases.md`. Pruebas: `docs/TEST-agente.md`.
+
+### Motor (`core/agent/`) — implementado 2026-09-22, 26/26 tests OK
+- [x] `core/agent/ollama.py` — cliente `/api/chat` con tools (urllib stdlib,
+      timeouts, reintentos x3 con backoff, `num_ctx`, `temperature`, modo degradado)
+- [x] `core/agent/tools.py` — `read_file`, `list_dir`, `search` (lectura)
+- [x] `core/agent/tools.py` — `write_file` (con `.bak`), `edit_file` (old/new exacto)
+- [x] `core/agent/tools.py` — `run_shell` (timeout 120 s, cwd confinado, lista negra dura)
+- [x] `core/agent/tools.py` — `open_app`/`list_apps` (reusa `core/launcher.py`),
+      `get_system_info`, JSON-schemas + errores tipados de `ESPEC §3.3`
+- [x] `core/agent/loop.py` — bucle agéntico (MAX_STEPS=8, append `role:tool`,
+      truncado de outputs, `AGENT_SYS_V1` de `ESPEC §3.5`) en `QThread` +
+      fallback JSON §3.4.1 + `run_turn` funcional para tests
+- [x] `core/agent/policy.py` — máquina `PROPUESTA→APROBADA|RECHAZADA|EDITADA`,
+      nada ejecuta sin señal del usuario (ADR-014) + `rm_home` y fork-bomb
+      corregidas tras la suite B
+- [x] `agent_log.jsonl` append-only con el schema de `ESPEC §3.8` (gitignored)
+
+### Interfaz (`ui/chat_panel.py` + integración) — implementada 2026-09-22
+- [x] `ui/chat_panel.py` — burbujas terminal-HUD, input, tarjetas de aprobación
+      (tool, args, diff colapsable, Aprobar/Rechazar/Editar), estados
+      pensando/ejecutando/error/offline, 8 temas via `ThemeManager`
+- [x] `ui/jarvis_ui.py` — botón 💬 + `Ctrl+J`, pestañas Noticias|Asistente,
+      worker con señales (sin tocar widgets desde hilos), log append-only
+- [x] `ui/settings_dialog.py` — sección "6 · Asistente" (url, modelo + probar
+      conexión, límites, ver log, vaciar chat)
+- [x] `core/settings.py` — claves `agent.*` con migración suave
+
+### Instalador, pruebas y docs de Fase 1 — hechos 2026-09-22
+- [x] `install.py` — verifica `ollama` + modelo `qwen2.5-coder:7b` (`ollama list`),
+      aviso si el demonio no corre (incl. `--check-only`)
+- [x] `tests/test_agent_{tools,policy,loop,ui}.py` — suites A–D en verde (26/26) +
+      caso C9 (fallback JSON); turno real contra Ollama verificado (17 s)
+- [x] Tests offscreen Qt — render panel + tarjetas + clics, 0 errores `QPainter`
+- [x] Docs Fase 1 — resultados anexados a `TEST-agente.md`; CHANGELOG actualizado;
+      pendiente solo el checklist manual M1–M10 en GUI real
+
+## Roadmap Fases 2–4 (fuera de Fase 1, solo plan en `docs/PLAN-fases.md`)
+
+- [ ] Fase 2 — Visión: captura (`grab`/gnome-screenshot) + modelo visión
+      (`qwen2.5vl:7b`, ~5 GB) para "qué ves en pantalla"
+- [ ] Fase 3 — Web: fetch→markdown (base `core/news.py`) + control del MiniBrowser
+- [ ] Fase 4 — Voz: STT/TTS local (Piper + Whisper.cpp, evaluar costo CPU)
 
 ## Validación en máquina real (ADR-009 / ADR-011)
 
@@ -132,7 +199,14 @@
       no se queda dormido oculto); también con sitios lentos o que fallan
 - [ ] **Versión al iniciar (G-007)**: la barra inferior debe mostrar
       **v2.0.3** (o la release vigente) sin editar nada a mano
+- [ ] **Agente (Fase 1)**: "lista mis proyectos" → tarjeta 🟢 → Aprobar →
+      listado real; "abre VS Code" → Aprobar → se abre; "borra X" → Rechazar →
+      intacto; `rm -rf /` dictado → tarjeta "Bloqueada por política";
+      Ollama apagado → offline + Reintentar; `agent_log.jsonl` registra
+      propuesta+decisión+resultado
 
 ---
 _Historial de release: v2.0.0 (modo foco + lector), v1.4.0 (temas/noticias/settings),
-v1.3.0 (comando global jarvis), v1.2.0 (fix renderizado/sonidos/resolución de apps)._
+v1.3.0 (comando global jarvis), v1.2.0 (fix renderizado/sonidos/resolución de apps),
+v3.0.0 (asistente IA local Fase 1 implementado 2026-09-22: core/agent, chat,
+26/26 tests, turno real OK; pendiente checklist manual M1–M10)._

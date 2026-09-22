@@ -36,6 +36,14 @@ class SettingsManager:
         "greeting": {
             "adjective_index": 0,        # indice del adjetivo rotativo
         },
+        "agent": {
+            "enabled": True,             # asistente IA local activo
+            "url": "http://localhost:11434",
+            "model": "qwen2.5-coder:7b",
+            "timeout_s": 120,            # timeout por llamada a Ollama
+            "max_steps": 8,              # pasos maximos del loop por turno
+            "log_path": "agent_log.jsonl",
+        },
     }
 
     def __init__(self, settings_path: str | None = None) -> None:
@@ -71,6 +79,7 @@ class SettingsManager:
             ("tray", self._settings["tray"]),
             ("github", self._settings["github"]),
             ("greeting", self._settings["greeting"]),
+            ("agent", self._settings["agent"]),
         ):
             for key, value in self.DEFAULT_SETTINGS[group_key].items():
                 if key not in group_value:
@@ -220,3 +229,68 @@ class SettingsManager:
     def greeting_adjective_index(self, value: int) -> None:
         self._settings.setdefault("greeting", {})["adjective_index"] = int(value)
         self.save()
+
+    # ------------------------------------------------------------------
+    # Asistente IA local (Fase 1: Chat + Sistema)
+    # ------------------------------------------------------------------
+
+    def _agent(self, key: str, default: Any) -> Any:
+        return self._settings.get("agent", {}).get(key, default)
+
+    def _set_agent(self, key: str, value: Any) -> None:
+        self._settings.setdefault("agent", {})[key] = value
+        self.save()
+
+    @property
+    def agent_enabled(self) -> bool:
+        return bool(self._agent("enabled", True))
+
+    @agent_enabled.setter
+    def agent_enabled(self, value: bool) -> None:
+        self._set_agent("enabled", bool(value))
+
+    @property
+    def agent_url(self) -> str:
+        return str(self._agent("url", "http://localhost:11434")).rstrip("/")
+
+    @agent_url.setter
+    def agent_url(self, value: str) -> None:
+        self._set_agent("url", value.strip().rstrip("/") or "http://localhost:11434")
+
+    @property
+    def agent_model(self) -> str:
+        return str(self._agent("model", "qwen2.5-coder:7b")).strip()
+
+    @agent_model.setter
+    def agent_model(self, value: str) -> None:
+        self._set_agent("model", value.strip() or "qwen2.5-coder:7b")
+
+    @property
+    def agent_timeout_s(self) -> int:
+        try:
+            return max(10, min(600, int(self._agent("timeout_s", 120))))
+        except (TypeError, ValueError):
+            return 120
+
+    @agent_timeout_s.setter
+    def agent_timeout_s(self, value: int) -> None:
+        self._set_agent("timeout_s", max(10, min(600, int(value))))
+
+    @property
+    def agent_max_steps(self) -> int:
+        try:
+            return max(1, min(20, int(self._agent("max_steps", 8))))
+        except (TypeError, ValueError):
+            return 8
+
+    @agent_max_steps.setter
+    def agent_max_steps(self, value: int) -> None:
+        self._set_agent("max_steps", max(1, min(20, int(value))))
+
+    @property
+    def agent_log_path(self) -> str:
+        return str(self._agent("log_path", "agent_log.jsonl"))
+
+    @agent_log_path.setter
+    def agent_log_path(self, value: str) -> None:
+        self._set_agent("log_path", value.strip() or "agent_log.jsonl")

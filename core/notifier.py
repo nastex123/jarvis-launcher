@@ -1,10 +1,12 @@
 """
-core/notifier.py - Notificaciones toast nativas de Windows.
+core/notifier.py - Notificaciones nativas (dual Windows + Linux).
 
-Genera un toast via Windows.UI.Notifications (PowerShell) sin
-dependencias externas. Fallback silencioso si falla.
+Windows: toast via Windows.UI.Notifications (PowerShell), sin deps.
+Linux: `notify-send` (libnotify) si esta disponible; si no, el caller
+  puede usar QSystemTrayIcon.showMessage. Fallback silencioso.
 """
 
+import shutil
 import subprocess
 import sys
 
@@ -16,16 +18,20 @@ def _ps_quote(text: str) -> str:
 
 def notify(title: str, message: str) -> None:
     """
-    Muestra una notificacion toast de Windows.
+    Muestra una notificacion nativa del SO.
 
     Parameters
     ----------
     title : titulo de la notificacion (ej: "J.A.R.V.I.S.").
     message : cuerpo de la notificacion.
     """
-    if sys.platform != "win32":
-        return
+    if sys.platform == "win32":
+        _notify_windows(title, message)
+    elif sys.platform.startswith("linux"):
+        _notify_linux(title, message)
 
+
+def _notify_windows(title: str, message: str) -> None:
     title_q = _ps_quote(title)
     msg_q = _ps_quote(message)
 
@@ -51,6 +57,22 @@ def notify(title: str, message: str) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except OSError:  # pragma: no cover
+        pass
+
+
+def _notify_linux(title: str, message: str) -> None:
+    """notify-send si existe; silencioso si no (el tray hace fallback)."""
+    notify_send = shutil.which("notify-send")
+    if notify_send is None:
+        return
+    try:
+        subprocess.Popen(
+            [notify_send, "--app-name=J.A.R.V.I.S.", title, message],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
     except OSError:  # pragma: no cover
         pass

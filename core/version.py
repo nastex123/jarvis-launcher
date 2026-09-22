@@ -20,11 +20,13 @@ saluden con coherencia horaria:
 
 import os
 import subprocess
+import sys
 
 __version__ = "2.0.3"
 
 # Windows: evita abrir una ventana de consola al invocar git.
-_CREATE_NO_WINDOW = 0x08000000
+# En POSIX creationflags no existe: solo se pasa en Windows.
+_CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 _GIT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -33,13 +35,22 @@ def get_app_version() -> str:
     """Version efectiva: tag git mas reciente si esta disponible, si no la
     constante `__version__` (VERIFICADO en cada arranque)."""
     try:
-        proc = subprocess.run(
-            ["git", "-C", _GIT_ROOT, "describe", "--tags", "--abbrev=0"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            creationflags=_CREATE_NO_WINDOW,
-        )
+        cmd = ["git", "-C", _GIT_ROOT, "describe", "--tags", "--abbrev=0"]
+        if sys.platform == "win32":
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        else:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
         tag = proc.stdout.strip() if proc.returncode == 0 else ""
         if tag:
             return tag.lstrip("v")

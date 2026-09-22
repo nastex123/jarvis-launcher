@@ -133,11 +133,16 @@ def main() -> int:
     app.setApplicationName("J.A.R.V.I.S. Launcher")
     app.setApplicationVersion(get_app_version())
 
-    # Estilo global
+    # Estilo global (pila de fuentes por plataforma: Segoe UI solo en Windows)
+    font_stack = (
+        "'Segoe UI', 'Consolas', monospace"
+        if sys.platform == "win32"
+        else "'Inter', 'Ubuntu', 'DejaVu Sans', monospace"
+    )
     app.setStyleSheet(
         """
         * {
-            font-family: 'Segoe UI', 'Consolas', monospace;
+            font-family: %s;
         }
         QWidget {
             background: #080A12;
@@ -156,6 +161,7 @@ def main() -> int:
             height: 0px;
         }
         """
+        % font_stack
     )
 
     # Crear launcher y ventana principal

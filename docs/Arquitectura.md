@@ -1,16 +1,22 @@
 # Arquitectura - J.A.R.V.I.S. Launcher
 
-> Estado: estable · Versión de referencia: 2.0.0 · Actualizado: 2026-09-11 (America/Bogota)
+> Estado: estable y dual · Versiones: HUD Next.js 16 + PixiJS v8 + Tauri v2 (`src-web/`) & Versión clásica Python PyQt6 2.0.3 · Actualizado: 2026-09-22 (America/Bogota)
 
 ## 1. Descripción general
 
-**J.A.R.V.I.S. Launcher** es una aplicación de escritorio para Windows (Python 3 +
-PyQt6) que agrupa aplicaciones por modos de operación (Gaming, Trabajo, Estudio)
-con estética estilo JARVIS. Cada modo lanza las apps configuradas y ofrece
-retroalimentación visual (animaciones y resaltados propios; **sin sonidos de
-sistema**, ver ADR-010).
-Incluye panel lateral de noticias RSS (presets o URL propia), temas de color
-seleccionables desde la interfaz y panel de control (rueda ⚙).
+**J.A.R.V.I.S. Launcher** opera bajo una arquitectura dual de vanguardia:
+
+1. **HUD Moderno de Grado Industrial (`src-web/`, ADR-015)**:
+   - Frontend reactivo en **Next.js 16 + React 19** con aceleración gráfica **PixiJS v8** en WebGL/WebGPU.
+   - Esfera geodésica ASCII 3D y vórtice de tensores continuo con curva cúbica smoothstep.
+   - Control total de PC (apertura de apps y consola shell) con modal interactivo de confirmación destructiva.
+   - Asistente de doble motor: Ollama (`qwen2.5-coder:7b`) con fallback automático y transparente hacia agente autónomo OpenCode (`~/.opencode/bin/opencode`).
+   - Política estricta de cero emojis con sanitización Unicode multinivel.
+   - Empaquetado nativo de alto rendimiento con **Tauri v2** en Rust.
+
+2. **Launcher de Escritorio Clásico (Python 3 + PyQt6)**:
+   - Agrupa aplicaciones por modos de operación (Gaming, Trabajo, Estudio) con estética estilo JARVIS. Cada modo lanza las apps configuradas y ofrece retroalimentación visual (animaciones y resaltados propios; **sin sonidos de sistema**, ver ADR-010).
+   - Incluye panel lateral de noticias RSS (presets o URL propia), temas de color seleccionables desde la interfaz y panel de control (rueda ⚙).
 
 Desde la v2.0.0 (modo workspace / foco) incorpora además:
 - **Comportamiento de ventana (modo foco total, ADR-011)**: el launcher queda
@@ -436,3 +442,50 @@ Resumen de categorías vigentes (verificado al 2026-09-11):
 
 > Nota: este listado es deuda técnica conocida; no implica compromisos de
 > calendario. Cada item pendiente puede convertirse en tarea con commit/PR.
+
+## 8. Subsistema agente (Fase 1 — especificado, pendiente de implementación)
+
+Contrato normativo: [ESPEC-agente-fase1.md](./ESPEC-agente-fase1.md).
+Decisiones: [ADR-013](./ADR-013-motor-agentico-local.md) (motor Ollama
+`qwen2.5-coder:7b`, stdlib, `QThread`, modo degradado) y
+[ADR-014](./ADR-014-politica-confirmacion.md) (confirmar-todo, lista negra
+de shell, auditoría en `agent_log.jsonl`). Roadmap: [PLAN-fases.md](./PLAN-fases.md).
+Pruebas: [TEST-agente.md](./TEST-agente.md).
+
+```mermaid
+flowchart TD
+    subgraph UI2["ui/ (Fase 1)"]
+        chat["chat_panel.py - ChatPanel<br/>(burbujas + tarjetas Aprobar/Rechazar/Editar)"]
+    end
+
+    subgraph AG["core/agent/ (Fase 1)"]
+        loop["loop.py - run_turn + AgentWorker(QThread)<br/>(MAX_STEPS=8, AGENT_SYS_V1)"]
+        ol["ollama.py - OllamaClient<br/>(/api/chat + tools, reintentos)"]
+        tl["tools.py - 9 tools<br/>(archivos, shell, apps, sistema)"]
+        pol["policy.py - DENY_PATTERNS + redact<br/>(lista negra, secretos, .bak)"]
+    end
+
+    chat -- "messageSent / señales Qt" --> loop
+    loop --> ol
+    loop --> tl
+    loop --> pol
+    ol -.-> ollama_srv["Ollama localhost:11434<br/>(qwen2.5-coder:7b)"]
+    tl --> ln2["AppLauncher existente<br/>(open_app/list_apps)"]
+    tl --> proc2["FS + shell del usuario<br/>(cwd confinado, timeouts)"]
+    pol -.-> agent_log["agent_log.jsonl (raíz, gitignore)"]
+```
+
+Módulos y settings:
+
+- `core/agent/ollama.py` — `OllamaClient`, errores `OllamaOffline`,
+  `OllamaTimeout`, `ModelMissing`.
+- `core/agent/tools.py` — `read_file`, `list_dir`, `search`, `write_file`,
+  `edit_file`, `run_shell`, `open_app`, `list_apps`, `get_system_info`
+  (schemas y errores en ESPEC §3.3).
+- `core/agent/loop.py` — `AGENT_SYS_V1`, algoritmo ESPEC §3.4, historial con
+  compactado (caso B6).
+- `core/agent/policy.py` — máquina de estados, `DENY_PATTERNS`,
+  `SECRET_PATTERNS`, backups `.bak`.
+- `core/settings.py` — claves `agent.{enabled,url,model,timeout_s,
+  max_steps,log_path}` con migración suave; rueda ⚙ → sección "6 · Asistente".
+- `install.py` — verifica binario/demonio/modelo Ollama (aviso, no bloqueo).

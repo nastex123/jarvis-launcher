@@ -1,5 +1,5 @@
 """
-core/launcher.py - Motor de apertura de aplicaciones.
+core/launcher.py - Motor de apertura de aplicaciones (dual Windows + Linux).
 
 Ejecuta la lista de apps asociadas a un modo de forma secuencial,
 con un pequeno delay entre cada una para evitar picos de CPU.
@@ -8,24 +8,31 @@ Resolucion de comandos (en orden):
   1. Si el comando es una URL -> navegador por defecto.
   2. Si la ruta existe -> se lanza directamente.
   3. Si el comando es un nombre corto (p. ej. "Discord") o la ruta
-     no existe -> se busca el ejecutable en el menu de inicio del
-     usuario y del sistema (accesos directos .lnk) y en el registro
-     App Paths de Windows.
+     no existe -> se busca el ejecutable:
+     - Windows: menu de inicio del usuario y del sistema (accesos
+       directos .lnk) y registro App Paths.
+     - Linux: PATH + archivos .desktop freedesktop
+       (/usr/share/applications, ~/.local/share/applications,
+       XDG_DATA_DIRS, exports de Flatpak).
   4. Si no se encuentra -> fallo con mensaje descriptivo.
 """
 
 import glob
 import logging
 import os
+import shlex
 import shutil
 import subprocess
+import sys
 import time
-import winreg
+import webbrowser
 from typing import Callable
 
 logger = logging.getLogger("jarvis.launcher")
 
-# Directorios del menu de inicio donde buscar accesos directos
+from core.platform import is_linux, is_windows, linux_desktop_dirs
+
+# Directorios del menu de inicio donde buscar accesos directos (Windows)
 _START_MENU_DIRS = [
     os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
     os.path.join(
@@ -117,10 +124,13 @@ class AppLauncher:
             logger.warning("Comando vacio, saltando.")
             return False
 
-        # Si es URL, abrir en navegador por defecto
+        # Si es URL, abrir en navegador por defecto (cross-platform)
         if command.startswith("http://") or command.startswith("https://"):
             try:
-                os.startfile(command)
+                if is_windows():
+                    os.startfile(command)  # type: ignore[attr-defined]
+                else:
+                    webbrowser.open(command)
                 logger.info(f"URL abierta: {command}")
                 return True
             except OSError as exc:
@@ -138,33 +148,48 @@ class AppLauncher:
 
         # Lanzamiento normal
         try:
-            cmd_list = [resolved]
-            if args:
-                cmd_list.extend(args.split())
-            subprocess.Popen(
-                cmd_list,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.DETACHED_PROCESS
-                | subprocess.CREATE_NEW_PROCESS_GROUP,
-            )
-            logger.info(f"App lanzada: {resolved} {args}")
+            cmd_list = self._build_cmd_list(resolved, args)
+            popen_kwargs: dict = {
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
+            if is_windows():
+                popen_kwargs["creationflags"] = (
+                    subprocess.DETACHED_PROCESS
+                    | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+            else:
+                # Equivalente POSIX: detach de la terminal sin creationflags
+                popen_kwargs["start_new_session"] = True
+            subprocess.Popen(cmd_list, **popen_kwargs)
+            logger.info(f"App lanzada: {cmd_list} {args}")
             return True
         except Exception as exc:
             logger.error(f"Error lanzando {resolved}: {exc}")
-            # Fallback: os.startfile
-            try:
-                os.startfile(resolved)
-                return True
-            except OSError:
-                return False
+            # Fallback Windows: os.startfile
+            if is_windows():
+                try:
+                    os.startfile(resolved)  # type: ignore[attr-defined]
+                    return True
+                except OSError:
+                    return False
+            return False
+
+    @staticmethod
+    def _build_cmd_list(resolved: str, args: str) -> list[str]:
+        """Construye argv. Soporta comandos flatpak y args con comillas."""
+        # resolved puede ser "flatpak run org.X" (multi-token) si vino de .desktop
+        base = shlex.split(resolved) if " " in resolved and not os.path.exists(resolved) else [resolved]
+        if args:
+            base.extend(shlex.split(args))
+        return base
 
     # ------------------------------------------------------------------
     # Resolucion de comandos
     # ------------------------------------------------------------------
 
     def _resolve_command(self, command: str) -> str | None:
-        """Devuelve la ruta real del ejecutable o None si no existe."""
+        """Devuelve la ruta/comando real del ejecutable o None si no existe."""
         # 1. Ruta absoluta existente
         if os.path.exists(command):
             return command
@@ -174,24 +199,32 @@ class AppLauncher:
         if found:
             return found
 
-        # 3. Nombre en menu de inicio (usuario y sistema)
-        exe_name = os.path.basename(command).split(".exe")[0]
-        found = self._find_in_start_menu(exe_name)
-        if found:
-            return found
-
-        # 4. Registro App Paths de Windows (HKCU y HKLM)
-        found = self._find_in_app_paths(command)
-        if found:
-            return found
+        # 3. Plataforma: menu inicio / App Paths (Windows) o .desktop (Linux)
+        if is_windows():
+            exe_name = os.path.basename(command).split(".exe")[0]
+            found = self._find_in_start_menu(exe_name)
+            if found:
+                return found
+            found = self._find_in_app_paths(command)
+            if found:
+                return found
+        elif is_linux():
+            found = self._find_in_desktop_files(command)
+            if found:
+                return found
 
         return None
+
+    # ------------------------- Windows --------------------------------
 
     def _find_in_start_menu(self, app_name: str) -> str | None:
         """
         Busca un acceso directo .lnk cuyo nombre coincida con app_name
         (insensible a mayusculas) y extrae el TargetPath del ejecutable.
+        Solo Windows.
         """
+        if not is_windows():
+            return None
         app_lower = app_name.lower()
         for start_dir in _START_MENU_DIRS:
             if not os.path.isdir(start_dir):
@@ -230,7 +263,11 @@ class AppLauncher:
             return None
 
     def _find_in_app_paths(self, command: str) -> str | None:
-        """Busca el ejecutable en la clave App Paths del registro."""
+        """Busca el ejecutable en la clave App Paths del registro (Windows)."""
+        if not is_windows():
+            return None
+        import winreg
+
         exe_name = os.path.basename(command)
         if not exe_name.lower().endswith(".exe"):
             exe_name += ".exe"
@@ -252,3 +289,116 @@ class AppLauncher:
             except OSError:
                 continue
         return None
+
+    # ------------------------- Linux ----------------------------------
+
+    # Alias de nombres amigables -> candidatos .desktop/PATH (Linux).
+    # Permite usar "VS Code" en config y resolver code.desktop, etc.
+    _LINUX_ALIASES: dict[str, list[str]] = {
+        "vs code": ["code", "visual studio code"],
+        "vscode": ["code"],
+        "chrome": ["google-chrome", "chromium", "brave-browser"],
+        "discord": ["discord"],
+        "spotify": ["spotify"],
+        "steam": ["steam"],
+        "firefox": ["firefox"],
+        "terminal": ["gnome-terminal", "konsole", "xterm"],
+        "files": ["nautilus", "dolphin", "thunar"],
+    }
+
+    def _find_in_desktop_files(self, command: str) -> str | None:
+        """Busca la app en archivos .desktop freedesktop (Linux).
+
+        Matchea por nombre de archivo (discord.desktop), campo Name= o
+        StartupWMClass, insensible a mayusculas. Retorna la linea Exec
+        limpia de field-codes (%U, %F, ...) o el binario si existe.
+        """
+        if not is_linux():
+            return None
+        needle = os.path.splitext(os.path.basename(command))[0].lower()
+        # 0. Alias amigables ("VS Code" -> code) via PATH directo primero
+        for alias in self._LINUX_ALIASES.get(needle, []):
+            direct = shutil.which(alias)
+            if direct:
+                logger.info(f"App '{command}' resuelta via alias PATH: {alias}")
+                return direct
+        needles = [needle] + self._LINUX_ALIASES.get(needle, [])
+        for app_dir in linux_desktop_dirs():
+            try:
+                entries = os.listdir(app_dir)
+            except OSError:
+                continue
+            for entry in entries:
+                if not entry.lower().endswith(".desktop"):
+                    continue
+                stem = os.path.splitext(entry)[0].lower()
+                desktop_path = os.path.join(app_dir, entry)
+                if not any(
+                    n and (n in stem or n == stem) for n in needles
+                ):
+                    # Leer Name=/StartupWMClass antes de descartar
+                    # (p. ej. "code.desktop" vs "VS Code")
+                    name_field = self._desktop_field(desktop_path, "Name").lower()
+                    wm_class = self._desktop_field(desktop_path, "StartupWMClass").lower()
+                    if not any(
+                        n and (n in name_field or n in wm_class) for n in needles
+                    ):
+                        continue
+                exec_line = self._desktop_field(desktop_path, "Exec")
+                if not exec_line:
+                    continue
+                cleaned = self._clean_exec(exec_line)
+                if not cleaned:
+                    continue
+                first_token = shlex.split(cleaned)[0]
+                # Aceptar si el binario existe en PATH o es ruta absoluta
+                if os.path.isabs(first_token) and os.path.exists(first_token):
+                    logger.info(f"App '{command}' resuelta via desktop: {desktop_path}")
+                    return cleaned
+                if shutil.which(first_token):
+                    logger.info(f"App '{command}' resuelta via desktop: {desktop_path}")
+                    return cleaned
+                # Flatpak / snap: devolver el comando completo aunque no este en PATH
+                if first_token in ("flatpak", "snap"):
+                    logger.info(f"App '{command}' resuelta via desktop: {desktop_path}")
+                    return cleaned
+        return None
+
+    @staticmethod
+    def _desktop_field(desktop_path: str, field: str) -> str:
+        """Lee un campo X= de la seccion [Desktop Entry] sin dependencias."""
+        in_entry = False
+        prefix = field + "="
+        try:
+            with open(desktop_path, encoding="utf-8", errors="ignore") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if line.startswith("["):
+                        in_entry = line.strip().lower() == "[desktop entry]"
+                        continue
+                    if not in_entry:
+                        continue
+                    if line.startswith(prefix):
+                        return line[len(prefix):].strip()
+                    if line.startswith("["):
+                        break
+        except OSError:
+            return ""
+        return ""
+
+    @staticmethod
+    def _clean_exec(exec_line: str) -> str:
+        """Quita field-codes freedesktop (%U %F %u %f %i %c %k %%) de Exec."""
+        tokens: list[str] = []
+        for tok in shlex.split(exec_line):
+            if tok.startswith("%"):
+                continue
+            if tok == "%%":
+                tokens.append("%")
+                continue
+            tokens.append(tok)
+        return " ".join(tokens)
+
+
+def _unused_ref() -> None:  # evita warning de import no usado en Windows
+    _ = sys.platform

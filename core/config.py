@@ -7,6 +7,7 @@ y sus respectivas listas de aplicaciones.
 
 import json
 import os
+import sys
 from typing import Any
 
 
@@ -45,7 +46,14 @@ class ConfigManager:
     def __init__(self, config_path: str | None = None) -> None:
         if config_path is None:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_path = os.path.join(base_dir, "config.json")
+            # En Linux se prefiere config.linux.json si existe (no rompe
+            # el config.json de Windows). Fallback a config.json.
+            linux_path = os.path.join(base_dir, "config.linux.json")
+            default_path = os.path.join(base_dir, "config.json")
+            if sys.platform.startswith("linux") and os.path.exists(linux_path):
+                config_path = linux_path
+            else:
+                config_path = default_path
         self.config_path = config_path
         self._config: dict[str, Any] = {}
         self.load()

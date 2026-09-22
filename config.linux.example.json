@@ -1,0 +1,69 @@
+{
+    "app_name": "J.A.R.V.I.S. Launcher",
+    "version": "2.0.3",
+    "greeting": "Buenos dias, senpai. Selecciona tu modo de operacion:",
+    "modes": {
+        "gaming": {
+            "name": "Gaming",
+            "icon": "🎮",
+            "color": "#FF2D55",
+            "description": "Listo para la accion",
+            "apps": [
+                {
+                    "name": "Steam",
+                    "command": "steam"
+                },
+                {
+                    "name": "Discord",
+                    "command": "discord"
+                },
+                {
+                    "name": "Spotify",
+                    "command": "spotify"
+                }
+            ]
+        },
+        "work": {
+            "name": "Trabajo",
+            "icon": "💼",
+            "color": "#007AFF",
+            "description": "Modo productividad activado",
+            "apps": [
+                {
+                    "name": "VS Code",
+                    "command": "code"
+                },
+                {
+                    "name": "Chrome",
+                    "command": "google-chrome"
+                },
+                {
+                    "name": "Discord",
+                    "command": "discord"
+                }
+            ]
+        },
+        "study": {
+            "name": "Estudio",
+            "icon": "📚",
+            "color": "#30D158",
+            "description": "Modo aprendizaje activado",
+            "apps": [
+                {
+                    "name": "VS Code",
+                    "command": "code"
+                },
+                {
+                    "name": "Chrome (Notion)",
+                    "command": "google-chrome",
+                    "args": "https://notion.so"
+                },
+                {
+                    "name": "Chrome (YouTube)",
+                    "command": "google-chrome",
+                    "args": "https://youtube.com"
+                }
+            ]
+        }
+    }
+}

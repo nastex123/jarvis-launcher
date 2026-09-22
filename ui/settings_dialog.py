@@ -7,6 +7,7 @@ Panel de control rediseñado como LISTA ESTRUCTURADA (modo workspace):
   3 · Noticias ........... activar, posicion, fuente RSS (presets / URL)
   4 · Cuenta de GitHub ... vinculacion con nombre real para el saludo
   5 · Próximamente ....... controles en desarrollo (editor de modos/paletas)
+  6 · Asistente .......... IA local (Ollama): activar, URL, modelo, limites
 
 Cada fila de la lista se compone de: etiqueta descriptiva a la izquierda y
 control alineado a la derecha, separadas por lineas divisorias sutiles.
@@ -602,6 +603,13 @@ class SettingsDialog(QDialog):
             _mk_title("5 · PROXIMAMENTE", them.accent)
         )
         self._build_soon_rows()
+        self._form.addWidget(_mk_separator(them))
+
+        # ============ 6 · ASISTENTE ============
+        self._form.addWidget(
+            _mk_title("6 · ASISTENTE", them.accent)
+        )
+        self._build_agent_rows()
 
         self._form.addStretch()
 
@@ -870,6 +878,150 @@ class SettingsDialog(QDialog):
         return " • ".join(s.get("name", s.get("url", "?")) for s in srcs)
 
     # ------------------------------------------------------------------
+    # Filas: asistente IA local (Fase 1)
+    # ------------------------------------------------------------------
+
+    def _build_agent_rows(self) -> None:
+        them = self._theme.theme
+
+        # Activar asistente
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        text_col.addWidget(_mk_row_label("Asistente IA local", them))
+        text_col.addWidget(
+            _mk_row_hint(
+                "Chat con tu PC (archivos, comandos, apps). Cada acción pide aprobación.",
+                them,
+            )
+        )
+        row.addLayout(text_col, 1)
+        self._agent_check = QCheckBox("Activar asistente")
+        self._agent_check.setChecked(self._settings.agent_enabled)
+        self._agent_check.setStyleSheet(
+            f"background: transparent; color: {them.text}; font-size: 12px;"
+        )
+        row.addWidget(self._agent_check, alignment=Qt.AlignmentFlag.AlignRight)
+        self._form.addLayout(row)
+
+        # URL de Ollama
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        text_col.addWidget(_mk_row_label("Servidor Ollama", them))
+        row.addLayout(text_col, 1)
+        self._agent_url = QLineEdit(self._settings.agent_url)
+        self._agent_url.setFixedWidth(260)
+        self._agent_url.setStyleSheet(
+            f"background: {them.bg}; color: {them.text}; font-size: 12px;"
+            f"border: 1px solid {them.card_border}; border-radius: 6px; padding: 6px;"
+        )
+        row.addWidget(self._agent_url, alignment=Qt.AlignmentFlag.AlignRight)
+        self._form.addLayout(row)
+
+        # Modelo + probar conexión
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        text_col.addWidget(_mk_row_label("Modelo", them))
+        self._agent_status = QLabel("Sin probar.")
+        self._agent_status.setWordWrap(True)
+        self._agent_status.setStyleSheet(
+            f"background: transparent; color: {them.text_dim}; font-size: 10px;"
+        )
+        text_col.addWidget(self._agent_status)
+        row.addLayout(text_col, 1)
+        self._agent_model = QLineEdit(self._settings.agent_model)
+        self._agent_model.setFixedWidth(200)
+        self._agent_model.setStyleSheet(self._agent_url.styleSheet())
+        row.addWidget(self._agent_model, alignment=Qt.AlignmentFlag.AlignRight)
+        self._agent_test_btn = _mk_btn("PROBAR", them.accent, them.accent_soft)
+        self._agent_test_btn.clicked.connect(self._on_agent_test)
+        row.addWidget(self._agent_test_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        self._form.addLayout(row)
+
+        # Límites (timeout / pasos)
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        text_col.addWidget(_mk_row_label("Límites", them))
+        text_col.addWidget(
+            _mk_row_hint("Timeout por llamada (s) y pasos máximos por turno.", them)
+        )
+        row.addLayout(text_col, 1)
+        self._agent_timeout = QLineEdit(str(self._settings.agent_timeout_s))
+        self._agent_timeout.setFixedWidth(70)
+        self._agent_timeout.setStyleSheet(self._agent_url.styleSheet())
+        row.addWidget(self._agent_timeout, alignment=Qt.AlignmentFlag.AlignRight)
+        self._agent_steps = QLineEdit(str(self._settings.agent_max_steps))
+        self._agent_steps.setFixedWidth(60)
+        self._agent_steps.setStyleSheet(self._agent_url.styleSheet())
+        row.addWidget(self._agent_steps, alignment=Qt.AlignmentFlag.AlignRight)
+        self._form.addLayout(row)
+
+        # Log + vaciar chat
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        text_col.addWidget(_mk_row_label("Auditoría", them))
+        text_col.addWidget(
+            _mk_row_hint("Registro append-only de propuestas y decisiones.", them)
+        )
+        row.addLayout(text_col, 1)
+        self._agent_log_btn = _mk_btn("VER LOG", them.accent, them.accent_soft)
+        self._agent_log_btn.clicked.connect(self._on_agent_log)
+        row.addWidget(self._agent_log_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        self._agent_clear_btn = _mk_btn("VACIAR CHAT", them.accent, them.accent_soft)
+        self._agent_clear_btn.clicked.connect(self._on_agent_clear)
+        row.addWidget(self._agent_clear_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        self._form.addLayout(row)
+
+    def _on_agent_test(self) -> None:
+        """Prueba conexión contra Ollama (ping + lista de modelos)."""
+        from core.agent import OllamaClient
+
+        url = self._agent_url.text().strip() or "http://localhost:11434"
+        model = self._agent_model.text().strip()
+        client = OllamaClient(base_url=url, model=model, timeout_s=15, max_retries=1)
+        try:
+            if not client.ping():
+                self._agent_status.setText("Sin conexión: ¿ollama serve en marcha?")
+                return
+            models = client.list_models()
+            if model and not any(m.split(":")[0] == model.split(":")[0] for m in models):
+                self._agent_status.setText(
+                    f"En línea, pero falta el modelo. Ejecuta: ollama pull {model}"
+                )
+            else:
+                self._agent_status.setText(f"En línea ({len(models)} modelos).")
+        except Exception as exc:  # noqa: BLE001
+            self._agent_status.setText(f"Error: {exc}")
+
+    def _on_agent_log(self) -> None:
+        import os as _os
+        import webbrowser as _web
+
+        path = self._settings.agent_log_path
+        if not _os.path.isabs(path):
+            import core.platform as _plat
+
+            path = _os.path.join(_plat.repo_root(), path)
+        if _os.path.exists(path):
+            _web.open(f"file://{path}")
+        else:
+            self._agent_status.setText("Aún no hay log (usa el chat primero).")
+
+    def _on_agent_clear(self) -> None:
+        parent_ui = self.parent()
+        if parent_ui is not None and hasattr(parent_ui, "clear_agent_chat"):
+            parent_ui.clear_agent_chat()
+
+    # ------------------------------------------------------------------
     # Tema
     # ------------------------------------------------------------------
 
@@ -935,6 +1087,18 @@ class SettingsDialog(QDialog):
             self._settings.news_position = "left"
         else:
             self._settings.news_position = "right"
+        # Asistente (Fase 1)
+        self._settings.agent_enabled = self._agent_check.isChecked()
+        self._settings.agent_url = self._agent_url.text()
+        self._settings.agent_model = self._agent_model.text()
+        try:
+            self._settings.agent_timeout_s = int(self._agent_timeout.text())
+        except ValueError:
+            pass
+        try:
+            self._settings.agent_max_steps = int(self._agent_steps.text())
+        except ValueError:
+            pass
         # Aplicar en la UI padre
         parent_ui = self.parent()
         if parent_ui is not None:
@@ -942,6 +1106,8 @@ class SettingsDialog(QDialog):
                 parent_ui.apply_theme()
             if hasattr(parent_ui, "apply_news_panel"):
                 parent_ui.apply_news_panel()
+            if hasattr(parent_ui, "apply_agent_settings"):
+                parent_ui.apply_agent_settings()
             if hasattr(parent_ui, "refresh_news"):
                 # Fix v2.0.2 (Bug G-003): refresca las noticias en vivo al
                 # aplicar ajustes - antes el panel solo cambiaba al reiniciar
@@ -963,3 +1129,7 @@ class SettingsDialog(QDialog):
         self._github_lbl.setStyleSheet(
             f"background: transparent; color: {them.text_dim}; font-size: 10px;"
         )
+        if hasattr(self, "_agent_status"):
+            self._agent_status.setStyleSheet(
+                f"background: transparent; color: {them.text_dim}; font-size: 10px;"
+            )
