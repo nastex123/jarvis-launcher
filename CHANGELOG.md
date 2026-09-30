@@ -8,6 +8,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Perfil CPU GT710 `qwen3:1.7b` (Ryzen 5500 + 16 GB) (`core/agent/ollama.py`, `core/settings.py`, `install.py`, `docs/INVEST-modelo-cpu-gt710.md`)**: default `qwen2.5-coder:7b` -> `qwen3:1.7b` Q4_K_M (2.0B, tools+thinking, Apache 2.0) verificado con `ollama show` (`2026-09-30`). `qwen3:1.7b` descargado (1.4 GB) junto a `qwen2.5:3b` existente como fallback inmediato.
+
 ### Fixed
 - **Resolución de Endpoint de Modos en Servidor Puente (`src-web/scripts/bridge_server.py`)**: Corrección de la importación y llamada en el endpoint `/api/mode`, pasando de `Config`/`launch_mode` a `ConfigManager` y `AppLauncher().launch_mode(apps)`, permitiendo el lanzamiento nativo de aplicaciones por modo (`trabajo`, `gaming`, `estudio`) sin errores HTTP 500 (`2026-09-22T12:06:00-05:00`).
 

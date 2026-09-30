@@ -102,6 +102,8 @@
 
 ## En progreso
 
+- [x] Perfil CPU GT710: default `qwen3:1.7b` (`num_ctx 4096`, `timeout 180s`, `MAX_STEPS 5`) + `ollama pull qwen3:1.7b` verificado (1.4 GB, tools OK) — docs/INVEST-modelo-cpu-gt710.md
+
 - [x] Documentación del asistente IA local: ADR-013, ADR-014, ESPEC (incl.
       §3.4.1 fallback JSON), PLAN-fases, TEST-agente, Arquitectura §8,
       README índice, CHANGELOG, TODO
