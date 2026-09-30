@@ -39,9 +39,9 @@ class SettingsManager:
         "agent": {
             "enabled": True,             # asistente IA local activo
             "url": "http://localhost:11434",
-            "model": "qwen2.5-coder:7b",
-            "timeout_s": 120,            # timeout por llamada a Ollama
-            "max_steps": 8,              # pasos maximos del loop por turno
+            "model": "qwen3:1.7b",
+            "timeout_s": 180,            # timeout por llamada a Ollama (CPU GT710)
+            "max_steps": 5,              # pasos maximos del loop por turno (CPU)
             "log_path": "agent_log.jsonl",
         },
     }
@@ -259,18 +259,18 @@ class SettingsManager:
 
     @property
     def agent_model(self) -> str:
-        return str(self._agent("model", "qwen2.5-coder:7b")).strip()
+        return str(self._agent("model", "qwen3:1.7b")).strip() or "qwen3:1.7b"
 
     @agent_model.setter
     def agent_model(self, value: str) -> None:
-        self._set_agent("model", value.strip() or "qwen2.5-coder:7b")
+        self._set_agent("model", value.strip() or "qwen3:1.7b")
 
     @property
     def agent_timeout_s(self) -> int:
         try:
-            return max(10, min(600, int(self._agent("timeout_s", 120))))
+            return max(10, min(600, int(self._agent("timeout_s", 180))))
         except (TypeError, ValueError):
-            return 120
+            return 180
 
     @agent_timeout_s.setter
     def agent_timeout_s(self, value: int) -> None:
@@ -279,9 +279,9 @@ class SettingsManager:
     @property
     def agent_max_steps(self) -> int:
         try:
-            return max(1, min(20, int(self._agent("max_steps", 8))))
+            return max(1, min(20, int(self._agent("max_steps", 5))))
         except (TypeError, ValueError):
-            return 8
+            return 5
 
     @agent_max_steps.setter
     def agent_max_steps(self, value: int) -> None:

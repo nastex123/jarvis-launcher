@@ -300,7 +300,7 @@ def check_ollama() -> None:
     import json as _json
     import urllib.request as _url
 
-    model = "qwen2.5-coder:7b"
+    model = "qwen3:1.7b"
     if shutil.which("ollama") is None:
         log_warn("Ollama no instalado: el asistente IA quedará offline. "
                  "Instálalo desde https://ollama.com y ejecuta: ollama pull " + model)

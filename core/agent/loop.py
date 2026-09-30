@@ -32,7 +32,7 @@ from core.agent.tools import TOOLS, build_summary, execute_tool, ollama_tools
 
 logger = logging.getLogger("jarvis.agent.loop")
 
-MAX_STEPS = 8
+MAX_STEPS = 5
 MAX_TOOL_OUTPUT = 20000
 TRUNC_SUFFIX = "\n[…truncado: ver agent_log.jsonl]"
 COMPACT_TOKENS = 6000

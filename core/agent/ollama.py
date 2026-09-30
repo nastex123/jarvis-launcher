@@ -39,12 +39,12 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "qwen2.5-coder:7b",
-        timeout_s: int = 120,
+        model: str = "qwen3:1.7b",
+        timeout_s: int = 180,
         max_retries: int = 3,
         temperature: float = 0.2,
-        num_ctx: int = 8192,
-        keep_alive: str = "30m",
+        num_ctx: int = 4096,
+        keep_alive: str = "15m",
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
