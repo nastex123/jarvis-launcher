@@ -10,6 +10,21 @@ export interface ShellExecutionResult {
 }
 
 export async function executeSystemCommand(cmd: string): Promise<ShellExecutionResult> {
+  // 0. Si estamos en el desktop Electron (ventana nativa, sin MSVC/Rust)
+  if (typeof window !== "undefined" && (window as any).electronAPI) {
+    try {
+      const res = await (window as any).electronAPI.executeShell(cmd);
+      return {
+        stdout: res.stdout ?? "",
+        stderr: res.stderr ?? "",
+        exit_code: res.exitCode ?? 0,
+        ok: !!res.ok,
+      };
+    } catch (err) {
+      return { stdout: "", stderr: String(err), exit_code: 1, ok: false, error: String(err) };
+    }
+  }
+
   // 1. Si estamos dentro de Tauri nativo
   if (typeof window !== "undefined" && (window as any).__TAURI__) {
     try {
@@ -44,6 +59,15 @@ export async function executeSystemCommand(cmd: string): Promise<ShellExecutionR
 }
 
 export async function runOpenCodeAgent(prompt: string): Promise<string> {
+  // 0. Si estamos en el desktop Electron
+  if (typeof window !== "undefined" && (window as any).electronAPI) {
+    try {
+      return await (window as any).electronAPI.runOpencode(prompt);
+    } catch (err) {
+      return `Error ejecutando OpenCode vía Electron: ${err}`;
+    }
+  }
+
   // 1. Si estamos en Tauri nativo
   if (typeof window !== "undefined" && (window as any).__TAURI__) {
     try {
@@ -73,6 +97,16 @@ export async function runOpenCodeAgent(prompt: string): Promise<string> {
 }
 
 export async function triggerSystemMode(mode: string): Promise<boolean> {
+  // 0. Desktop Electron: IPC nativo (este era el P0 que faltaba en Tauri)
+  if (typeof window !== "undefined" && (window as any).electronAPI) {
+    try {
+      const res = await (window as any).electronAPI.launchMode(mode);
+      return !!res?.ok;
+    } catch {
+      return false;
+    }
+  }
+
   try {
     const res = await fetch("http://127.0.0.1:3002/api/mode", {
       method: "POST",

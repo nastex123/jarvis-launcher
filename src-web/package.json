@@ -2,11 +2,15 @@
   "name": "src-web",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "electron ./electron/main.js --dev",
+    "electron:start": "electron ./electron/main.js",
+    "dist": "next build && electron-builder --win nsis"
   },
   "dependencies": {
     "gsap": "^3.15.0",
@@ -27,6 +31,33 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.gexstudio.jarvis",
+    "productName": "J.A.R.V.I.S.",
+    "files": [
+      "out/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "J.A.R.V.I.S."
+    }
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "electron-winstaller@5.4.0": true,
+    "unrs-resolver@1.12.2": true
   }
 }

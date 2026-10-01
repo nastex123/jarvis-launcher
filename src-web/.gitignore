@@ -20,6 +20,9 @@
 # production
 /build
 
+# electron (instalador .exe + desempaquetado, se regeneran con npm run dist)
+/dist
+
 # misc
 .DS_Store
 *.pem
