@@ -66,12 +66,19 @@ def check_env() -> bool:
     return ok
 
 
+def run_node(cmd: list[str], **kwargs) -> "subprocess.CompletedProcess":
+    """Ejecuta npm/npx en Windows (npm.cmd) y Unix sin romper subprocess."""
+    if sys.platform == "win32":
+        return subprocess.run(["cmd", "/c", *cmd], **kwargs)
+    return subprocess.run(cmd, **kwargs)
+
+
 def ensure_web_deps() -> bool:
     if os.path.exists(os.path.join(WEB_DIR, "node_modules")):
         log_ok("node_modules presente")
         return True
     log_info("Instalando dependencias web (npm install) ...")
-    proc = subprocess.run(["npm", "install"], cwd=WEB_DIR, timeout=600)
+    proc = run_node(["npm", "install"], cwd=WEB_DIR, timeout=600)
     if proc.returncode != 0:
         log_fail("npm install fallo. Revisa tu red o Node 18+.")
         return False
@@ -83,7 +90,7 @@ def do_dev() -> int:
     log_info("Abriendo HUD en ventana DESKTOP (Tauri dev, sin navegador) ...")
     log_info("Cierra con Ctrl+C en esta terminal.")
     # npx usa el @tauri-apps/cli local sin necesitar script 'tauri' en package.json.
-    proc = subprocess.run(["npx", "tauri", "dev"], cwd=WEB_DIR)
+    proc = run_node(["npx", "tauri", "dev"], cwd=WEB_DIR)
     return proc.returncode
 
 
@@ -111,7 +118,7 @@ def find_bundle() -> str:
 
 def do_build() -> int:
     log_info("Compilando desktop nativo (tauri build, genera .exe/.msi) ...")
-    proc = subprocess.run(["npx", "tauri", "build"], cwd=WEB_DIR)
+    proc = run_node(["npx", "tauri", "build"], cwd=WEB_DIR)
     if proc.returncode != 0:
         log_fail("tauri build fallo. Revisa el log de Rust/Node de arriba.")
         return proc.returncode

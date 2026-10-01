@@ -508,6 +508,14 @@ def do_run(args) -> int:
     os.execv(venv_py, [venv_py, os.path.join(REPO, "main.py")])
 
 
+def run_node(cmd: list[str], **kwargs):
+    """Ejecuta npm/npx en Windows (npm.cmd) y Unix sin romper subprocess."""
+    import subprocess as _sp
+    if sys.platform == "win32":
+        return _sp.run(["cmd", "/c", *cmd], **kwargs)
+    return _sp.run(cmd, **kwargs)
+
+
 def do_run_web(args) -> int:
     """Arranca el HUD web: bridge :3002 + npm run dev (requiere Node 18+)."""
     if shutil.which("npm") is None:
@@ -519,7 +527,7 @@ def do_run_web(args) -> int:
         return 2
     if not os.path.exists(os.path.join(web_dir, "node_modules")):
         log_info("Instalando dependencias web (npm install) ...")
-        proc = subprocess.run(["npm", "install"], cwd=web_dir, timeout=600)
+        proc = run_node(["npm", "install"], cwd=web_dir, timeout=600)
         if proc.returncode != 0:
             log_fail("npm install falló. Revisa tu red o Node 18+.")
             return 2
@@ -530,7 +538,7 @@ def do_run_web(args) -> int:
     log_info("Cierra con Ctrl+C en esta terminal.")
     bridge_proc = subprocess.Popen([bridge_py, bridge], cwd=REPO)
     try:
-        proc = subprocess.run(["npm", "run", "dev"], cwd=web_dir)
+        proc = run_node(["npm", "run", "dev"], cwd=web_dir)
         return proc.returncode
     finally:
         bridge_proc.terminate()
