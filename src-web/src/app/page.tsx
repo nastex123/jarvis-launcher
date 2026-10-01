@@ -73,7 +73,8 @@ export default function Home() {
   return (
     <main className="relative flex h-screen w-screen overflow-hidden bg-[#000000] text-[#f4f4f5] font-sans select-none">
       {/* Zero-Header: Sin barra superior. Lienzo Central y Foco Total */}
-      <div className="relative z-10 flex flex-1 flex-col h-full min-w-0">
+      {/* jarvis-drag: el fondo mueve la ventana frameless por toda la pantalla */}
+      <div className="jarvis-drag relative z-10 flex flex-1 flex-col h-full min-w-0">
         {/* Logo J.A.R.V.I.S. con SVG en esquina superior derecha del área principal */}
         <div className="absolute top-5 right-6 z-30 pointer-events-none">
           <JarvisLogo isThinking={isThinking} />
@@ -104,22 +105,24 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Dock Inferior de Texto Plano 100% Clickeable */}
-        <BottomDock
-          activeMode={activeMode}
-          onSelectMode={handleModeSelect}
-          onOpenChat={() => toggleTab("chat")}
-          onOpenNews={() => toggleTab("news")}
-          activeSideTab={activeSideTab}
-          onCloseApp={handleClose}
-        />
+        {/* Dock Inferior de Texto Plano 100% Clickeable (no-drag: botones intactos) */}
+        <div className="jarvis-no-drag">
+          <BottomDock
+            activeMode={activeMode}
+            onSelectMode={handleModeSelect}
+            onOpenChat={() => toggleTab("chat")}
+            onOpenNews={() => toggleTab("news")}
+            activeSideTab={activeSideTab}
+            onCloseApp={handleClose}
+          />
+        </div>
       </div>
 
       {/* Dock Lateral Deslizable (Chat / Noticias) con Ancho Ajustable y Manija */}
       {activeSideTab && (
         <aside
           style={{ width: `${chatWidth}px` }}
-          className="relative z-20 h-full flex-shrink-0 flex transition-all duration-75"
+          className="jarvis-no-drag relative z-20 h-full flex-shrink-0 flex transition-all duration-75"
         >
           {/* Indicador de Arrastre / Resize Handle */}
           <div

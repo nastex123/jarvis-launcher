@@ -17,6 +17,15 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Ventana frameless (Electron/Tauri): zonas para arrastrar el programa.
+   .jarvis-drag mueve la ventana; .jarvis-no-drag deja clics/inputs/resize intactos. */
+.jarvis-drag {
+  -webkit-app-region: drag;
+}
+.jarvis-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 /* Scrollbar ultra fina monocromática */
 ::-webkit-scrollbar {
   width: 3px;
