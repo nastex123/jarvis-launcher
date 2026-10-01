@@ -11,6 +11,7 @@
  */
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { exec, execFile } = require('child_process');
 
 const isDev = process.argv.includes('--dev');
@@ -79,6 +80,22 @@ if (!gotLock) {
   });
 }
 
+// Resuelve el binario OpenCode: primero instalacion local ~/.opencode/bin,
+// si no existe cae a 'opencode' del PATH (winget WindowsApps, /usr/local/bin...).
+function resolveOpencode() {
+  const home = process.env.HOME || process.env.USERPROFILE || '.';
+  const { join } = path;
+  const local = IS_WIN
+    ? [join(home, '.opencode', 'bin', 'opencode.exe'), join(home, '.opencode', 'bin', 'opencode')]
+    : [join(home, '.opencode', 'bin', 'opencode')];
+  for (const cand of local) {
+    try {
+      if (fs.existsSync(cand)) return cand;
+    } catch { /* sigue al siguiente candidato */ }
+  }
+  return 'opencode';
+}
+
 // --- IPC: terminal (gobernada por el modal de confirmacion del HUD) ---
 ipcMain.handle('execute-shell', async (_event, cmd) => {
   if (typeof cmd !== 'string' || !cmd.trim()) {
@@ -97,12 +114,7 @@ ipcMain.handle('execute-shell', async (_event, cmd) => {
 
 // --- IPC: agente OpenCode (motor B, mismo binario que usa Tauri) ---
 ipcMain.handle('run-opencode', async (_event, prompt) => {
-  const home = process.env.HOME || process.env.USERPROFILE || '.';
-  const { join } = path;
-  const candidates = IS_WIN
-    ? [join(home, '.opencode', 'bin', 'opencode.exe'), join(home, '.opencode', 'bin', 'opencode'), 'opencode']
-    : [join(home, '.opencode', 'bin', 'opencode'), 'opencode'];
-  const bin = candidates[0];
+  const bin = resolveOpencode();
   return new Promise((resolve) => {
     execFile(bin, ['run', String(prompt || '')], { timeout: 120000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       const out = String(stdout || '') + (stderr ? `\n${stderr}` : '');
@@ -116,7 +128,8 @@ ipcMain.handle('run-opencode', async (_event, prompt) => {
 ipcMain.handle('launch-mode', async (_event, mode) => {
   const map = { gaming: 'gaming', trabajo: 'work', work: 'work', estudio: 'study', study: 'study' };
   const target = map[String(mode || '').toLowerCase()] || String(mode || '').toLowerCase();
-  const py = IS_WIN ? 'python' : 'python3';
+  // start_electron.py inyecta JARVIS_PYTHON (venv); fallback al python del PATH.
+  const py = process.env.JARVIS_PYTHON || (IS_WIN ? 'python' : 'python3');
   const code = [
     'import json, sys',
     'sys.path.insert(0, r"""' + REPO_ROOT + '""")',
