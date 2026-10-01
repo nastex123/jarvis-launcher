@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 """
-install.py - Instalador e inicializador de J.A.R.V.I.S. Launcher para Linux.
+install.py - Instalador e inicializador de J.A.R.V.I.S. Launcher (Windows + Linux).
 
 Todo-en-uno, solo stdlib. Idempotente: se puede re-ejecutar sin romper nada.
 
 Uso:
-    python3 install.py                  instala todo (venv + deps + bin + .desktop)
-    python3 install.py --run            instala (si falta) y lanza el launcher
-    python3 install.py --uninstall      revierte bin/.desktop/autostart
-    python3 install.py --uninstall --purge  ademas borra settings/state generados
+    python install.py                  instala deps (venv + requirements + modelo CPU)
+    python install.py --run            instala (si falta) y lanza el launcher clasico
+    python install.py --run-web        instala (si falta) y lanza HUD web (bridge + Next dev)
+    python install.py --check-only     solo diagnostico del entorno, no instala
+    python install.py --uninstall      revierte bin/.desktop/autostart (Linux)
 
 Opciones:
-    --no-autostart   no crea ~/.config/autostart/jarvis-launcher.desktop
-    --no-shortcut    no crea ~/.local/share/applications/jarvis-launcher.desktop
+    --no-autostart   no crea autostart (solo Linux)
+    --no-shortcut    no crea acceso del menu (solo Linux)
     --venv PATH      ruta del venv (defecto: <repo>/.venv)
     --yes            no pedir confirmacion en --purge
-    --run            lanzar al terminar (usa el python del venv)
-    --check-only     solo diagnostico del entorno, no instala
+    --run            lanzar el launcher clasico al terminar (usa el python del venv)
+    --run-web        lanzar el HUD web al terminar (bridge :3002 + npm run dev)
+    --pull-model     descarga el modelo Ollama CPU con `ollama pull`
+    --model NAME     modelo Ollama (defecto: qwen3:1.7b, perfil CPU GT710)
+    --check-only     solo diagnostico
 
 Lo que hace, por etapas:
-    1. check_env: Python>=3.10, pip, venv, distro/sesion (apt/dnf/pacman/zypper)
-    2. ensure_venv + pip install -r requirements.txt
-    3. check_system_libs: sugiere paquetes Qt6/X11/Wayland/WebEngine si faltan
-    4. ensure_linux_config: crea config.linux.json desde config.linux.example.json
-    5. install_bin: ~/.local/bin/jarvis (wrapper al venv + main.py)
-    6. install_desktop: ~/.local/share/applications/jarvis-launcher.desktop
-    7. install_autostart: ~/.config/autostart/jarvis-launcher.desktop
-    8. smoke_test: compileall + import PyQt6 + valida config.linux.json
-
-En Windows este script no instala: usa install_jarvis_cmd.bat / install_startup.bat.
+    1. check_env: Python>=3.10, pip, venv (+ Ollama)
+    2. ensure_venv + pip install -r requirements.txt (Windows: .venv\\Scripts)
+    3. check_ollama: verifica demonio + modelo CPU (con --pull-model lo descarga)
+    4. smoke_test: compileall + valida config.json
+    5. do_run / do_run_web: arranca el programa
 """
 
 from __future__ import annotations
@@ -137,7 +136,7 @@ def check_env() -> bool:
     if session.lower() == "wayland":
         log_info("Wayland detectado: el atajo Ctrl+Shift+Espacio sera interno "
                  "(con foco). Para global: Ajustes > Teclado > comando 'jarvis'.")
-    if shutil.which("notify-send") is None:
+    if sys.platform != "win32" and shutil.which("notify-send") is None:
         log_warn("Falta 'notify-send' (libnotify): las notificaciones usaran la bandeja. "
                  f"Instala con tu gestor ({mgr or 'apt/dnf/pacman'}).")
     else:
@@ -177,15 +176,22 @@ def check_system_libs(venv_py: str) -> bool:
 # Instalacion
 # ----------------------------------------------------------------------
 
+def venv_python(venv_dir: str) -> str:
+    """Ruta del python del venv segun SO."""
+    if sys.platform == "win32":
+        return os.path.join(venv_dir, "Scripts", "python.exe")
+    return os.path.join(venv_dir, "bin", "python")
+
+
 def ensure_venv(venv_dir: str) -> str:
-    venv_py = os.path.join(venv_dir, "bin", "python")
+    venv_py = venv_python(venv_dir)
     if os.path.exists(venv_py):
         log_ok(f"Venv existente: {venv_dir}")
         return venv_py
     log_info(f"Creando venv en {venv_dir} ...")
     proc = subprocess.run([sys.executable, "-m", "venv", venv_dir])
     if proc.returncode != 0 or not os.path.exists(venv_py):
-        log_fail("No se pudo crear el venv (instala python3-venv).")
+        log_fail("No se pudo crear el venv (en Windows: reinstala Python con 'Add to PATH' + pip).")
         sys.exit(2)
     log_ok("Venv creado")
     return venv_py
@@ -295,12 +301,11 @@ def install_desktop_file(venv_py: str, dest: str, autostart: bool = False) -> No
         )
 
 
-def check_ollama() -> None:
+def check_ollama(model: str = "qwen3:1.7b", pull: bool = False) -> None:
     """Verifica Ollama para el asistente (aviso, no bloquea la instalación)."""
     import json as _json
     import urllib.request as _url
 
-    model = "qwen3:1.7b"
     if shutil.which("ollama") is None:
         log_warn("Ollama no instalado: el asistente IA quedará offline. "
                  "Instálalo desde https://ollama.com y ejecuta: ollama pull " + model)
@@ -316,14 +321,22 @@ def check_ollama() -> None:
     log_ok("Demonio Ollama en línea")
     try:
         with _url.urlopen("http://localhost:11434/api/tags", timeout=10) as resp:
-            models = [m.get("name", "") for m in _json.loads(resp.read().decode()) .get("models", [])]
+            models = [m.get("name", "") for m in _json.loads(resp.read().decode()).get("models", [])]
     except OSError:
         log_warn("No se pudo listar modelos de Ollama.")
         return
     if any(m.split(":")[0] == model.split(":")[0] for m in models):
         log_ok(f"Modelo {model} descargado")
+    elif pull:
+        log_info(f"Descargando modelo CPU {model} (ollama pull, ~1.4 GB) ...")
+        proc = subprocess.run(["ollama", "pull", model], timeout=900)
+        if proc.returncode == 0:
+            log_ok(f"Modelo {model} descargado")
+        else:
+            log_fail(f"No se pudo descargar {model}. Ejecuta manual: ollama pull {model}")
     else:
-        log_warn(f"Modelo {model} ausente. Descárgalo con: ollama pull {model}")
+        log_warn(f"Modelo {model} ausente. Descárgalo con: ollama pull {model} "
+                 f"(o re-ejecuta con --pull-model)")
 
 
 def smoke_test(venv_py: str) -> bool:
@@ -364,39 +377,80 @@ def do_install(args) -> int:
         return 2
     venv_py = ensure_venv(args.venv)
     pip_install(venv_py)
-    check_system_libs(venv_py)  # informativo, no bloquea
-    ensure_linux_config()
-    check_ollama()
-    install_bin(venv_py)
-    if not args.no_shortcut:
-        install_desktop_file(venv_py, DESKTOP_PATH)
+    if sys.platform != "win32":
+        check_system_libs(venv_py)  # informativo, no bloquea
+        ensure_linux_config()
+    check_ollama(model=args.model, pull=args.pull_model)
+    if sys.platform != "win32":
+        install_bin(venv_py)
+        if not args.no_shortcut:
+            install_desktop_file(venv_py, DESKTOP_PATH)
+        else:
+            log_info("--no-shortcut: se omite el .desktop del menu.")
+        if not args.no_autostart:
+            install_desktop_file(venv_py, AUTOSTART_PATH, autostart=True)
+        else:
+            log_info("--no-autostart: se omite el autostart.")
     else:
-        log_info("--no-shortcut: se omite el .desktop del menu.")
-    if not args.no_autostart:
-        install_desktop_file(venv_py, AUTOSTART_PATH, autostart=True)
-    else:
-        log_info("--no-autostart: se omite el autostart.")
+        log_info("Windows: se omite bin/.desktop/autostart Linux "
+                 "(usa install_jarvis_cmd.bat / install_startup.bat si los quieres).")
     ok = smoke_test(venv_py)
     print()
     if ok:
-        log_ok("Instalacion completa. Abre una terminal nueva y ejecuta:  jarvis")
-        log_info("Atajo con foco: Ctrl+Shift+Espacio. Global en GNOME: "
-                 "Ajustes > Teclado > Anadir atajo -> comando 'jarvis'.")
-        log_info("Auto-inicio: rueda de ajustes del launcher o re-ejecuta install.py.")
+        if sys.platform == "win32":
+            log_ok("Instalacion completa. Lanza con:  python install.py --run  (clasico) "
+                   "o  python install.py --run-web  (HUD web)")
+        else:
+            log_ok("Instalacion completa. Abre una terminal nueva y ejecuta:  jarvis")
+        log_info("Agente CPU: qwen3:1.7b (num_ctx 4096, timeout 180s, steps 5). "
+                 "Forzar CPU con GT710:  set CUDA_VISIBLE_DEVICES=  + ollama serve")
     else:
         log_warn("Instalacion con advertencias: revisa los [FAIL] de arriba.")
+    if args.run_web:
+        return do_run_web(args)
     if args.run:
         return do_run(args)
     return 0 if ok else 1
 
 
 def do_run(args) -> int:
-    venv_py = os.path.join(args.venv, "bin", "python")
+    venv_py = venv_python(args.venv)
     if not os.path.exists(venv_py):
-        log_fail(f"No hay venv en {args.venv}. Ejecuta primero: python3 install.py")
+        log_fail(f"No hay venv en {args.venv}. Ejecuta primero: python install.py")
         return 2
-    log_info("Iniciando J.A.R.V.I.S. Launcher ...")
+    log_info("Iniciando J.A.R.V.I.S. Launcher (clasico PyQt6) ...")
+    if sys.platform == "win32":
+        proc = subprocess.run([venv_py, os.path.join(REPO, "main.py")])
+        return proc.returncode
     os.execv(venv_py, [venv_py, os.path.join(REPO, "main.py")])
+
+
+def do_run_web(args) -> int:
+    """Arranca el HUD web: bridge :3002 + npm run dev (requiere Node 18+)."""
+    if shutil.which("npm") is None:
+        log_fail("Falta Node/npm (Node 18+). Instálalo desde https://nodejs.org y re-ejecuta.")
+        return 2
+    web_dir = os.path.join(REPO, "src-web")
+    if not os.path.exists(os.path.join(web_dir, "package.json")):
+        log_fail("No se encontró src-web/package.json (rama dev requerida).")
+        return 2
+    if not os.path.exists(os.path.join(web_dir, "node_modules")):
+        log_info("Instalando dependencias web (npm install) ...")
+        proc = subprocess.run(["npm", "install"], cwd=web_dir, timeout=600)
+        if proc.returncode != 0:
+            log_fail("npm install falló. Revisa tu red o Node 18+.")
+            return 2
+    bridge = os.path.join(web_dir, "scripts", "bridge_server.py")
+    venv_py = venv_python(args.venv)
+    bridge_py = venv_py if os.path.exists(venv_py) else sys.executable
+    log_info("Puente local en http://127.0.0.1:3002 + Next dev en http://localhost:3000 ...")
+    log_info("Cierra con Ctrl+C en esta terminal.")
+    bridge_proc = subprocess.Popen([bridge_py, bridge], cwd=REPO)
+    try:
+        proc = subprocess.run(["npm", "run", "dev"], cwd=web_dir)
+        return proc.returncode
+    finally:
+        bridge_proc.terminate()
 
 
 def do_uninstall(args) -> int:
@@ -430,9 +484,12 @@ def do_uninstall(args) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Instalador e inicializador de J.A.R.V.I.S. Launcher para Linux."
+        description="Instalador e inicializador de J.A.R.V.I.S. Launcher (Windows + Linux)."
     )
-    parser.add_argument("--run", action="store_true", help="lanzar el launcher al terminar")
+    parser.add_argument("--run", action="store_true", help="lanzar el launcher clasico al terminar")
+    parser.add_argument("--run-web", action="store_true", help="lanzar el HUD web (bridge + Next dev)")
+    parser.add_argument("--pull-model", action="store_true", help="descargar el modelo Ollama CPU")
+    parser.add_argument("--model", default="qwen3:1.7b", help="modelo Ollama (defecto: qwen3:1.7b)")
     parser.add_argument("--uninstall", action="store_true", help="desinstalar bin/.desktop/autostart")
     parser.add_argument("--purge", action="store_true", help="con --uninstall, borra settings/state")
     parser.add_argument("--no-autostart", action="store_true", help="no crear autostart")
@@ -442,14 +499,14 @@ def main() -> int:
     parser.add_argument("--check-only", action="store_true", help="solo diagnostico")
     args = parser.parse_args()
 
-    if sys.platform == "win32":
-        log_fail("install.py es para Linux. En Windows usa install_jarvis_cmd.bat.")
-        return 2
     if args.check_only:
         ok = check_env()
-        check_ollama()
+        check_ollama(model=args.model, pull=False)
         return 0 if ok else 2
     if args.uninstall:
+        if sys.platform == "win32":
+            log_fail("En Windows --uninstall aun no gestiona .bat: borra el venv a mano si quieres.")
+            return 2
         return do_uninstall(args)
     return do_install(args)
 
