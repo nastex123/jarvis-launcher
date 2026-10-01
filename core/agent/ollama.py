@@ -39,12 +39,13 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "qwen3:1.7b",
+        model: str = "qwen3:0.6b",
         timeout_s: int = 180,
         max_retries: int = 3,
         temperature: float = 0.2,
         num_ctx: int = 4096,
         keep_alive: str = "15m",
+        think: bool = False,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -53,6 +54,9 @@ class OllamaClient:
         self.temperature = temperature
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
+        # think=False en CPU: el razonamiento interno multiplica x5 el tiempo
+        # (hola: 25 s -> 5 s en 0.6b) y el tool-call sale limpio igual.
+        self.think = think
 
     # ------------------------------------------------------------------
     # Diagnóstico
@@ -98,6 +102,7 @@ class OllamaClient:
                 "messages": messages,
                 "tools": tools,
                 "stream": False,
+                "think": self.think,
                 "keep_alive": self.keep_alive,
                 "options": {
                     "temperature": self.temperature,

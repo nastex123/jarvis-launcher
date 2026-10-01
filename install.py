@@ -20,7 +20,7 @@ Opciones:
     --run-web        lanzar el HUD web al terminar (bridge :3002 + npm run dev)
     --pull-model     descarga el modelo Ollama CPU con `ollama pull`
     --with-rust      instala Rust/Cargo con rustup si falta (desktop Tauri)
-    --model NAME     modelo Ollama (defecto: qwen3:1.7b, perfil CPU GT710)
+    --model NAME     modelo Ollama (defecto: qwen3:0.6b, perfil CPU GT710)
     --check-only     solo diagnostico
 
 Lo que hace, por etapas:
@@ -302,7 +302,7 @@ def install_desktop_file(venv_py: str, dest: str, autostart: bool = False) -> No
         )
 
 
-def check_ollama(model: str = "qwen3:1.7b", pull: bool = False) -> None:
+def check_ollama(model: str = "qwen3:0.6b", pull: bool = False) -> None:
     """Verifica Ollama para el asistente (aviso, no bloquea la instalación)."""
     import json as _json
     import urllib.request as _url
@@ -533,7 +533,7 @@ def do_install(args) -> int:
                    "o  python install.py --run-web  (HUD web)")
         else:
             log_ok("Instalacion completa. Abre una terminal nueva y ejecuta:  jarvis")
-        log_info("Agente CPU: qwen3:1.7b (num_ctx 4096, timeout 180s, steps 5). "
+        log_info("Agente CPU: qwen3:0.6b (num_ctx 4096, timeout 180s, steps 5). "
                  "Forzar CPU con GT710:  set CUDA_VISIBLE_DEVICES=  + ollama serve")
     else:
         log_warn("Instalacion con advertencias: revisa los [FAIL] de arriba.")
@@ -629,7 +629,7 @@ def main() -> int:
     parser.add_argument("--run-web", action="store_true", help="lanzar el HUD web (bridge + Next dev)")
     parser.add_argument("--pull-model", action="store_true", help="descargar el modelo Ollama CPU")
     parser.add_argument("--with-rust", action="store_true", help="instalar Rust/Cargo si falta (desktop Tauri)")
-    parser.add_argument("--model", default="qwen3:1.7b", help="modelo Ollama (defecto: qwen3:1.7b)")
+    parser.add_argument("--model", default="qwen3:0.6b", help="modelo Ollama (defecto: qwen3:0.6b)")
     parser.add_argument("--uninstall", action="store_true", help="desinstalar bin/.desktop/autostart")
     parser.add_argument("--purge", action="store_true", help="con --uninstall, borra settings/state")
     parser.add_argument("--no-autostart", action="store_true", help="no crear autostart")

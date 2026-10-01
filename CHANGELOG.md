@@ -9,6 +9,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Modelo ultraliviano `qwen3:0.6b` + `think:false` por defecto (CPU) (`core/agent/ollama.py`, `core/settings.py`, `ui/jarvis_ui.py`, `ChatPanel.tsx`, `install.py`)**: `hola` 44.5 s -> 5.4 s y tool-call 9.6 s limpio sin `<tool_result>` fabricado en Ryzen 5500 CPU (`2026-10-01`). Nueva clave `agent.think` (defecto False) cableada al payload `/api/chat`.
+
+### Added
 - **Perfil CPU GT710 `qwen3:1.7b` (Ryzen 5500 + 16 GB) (`core/agent/ollama.py`, `core/settings.py`, `install.py`, `docs/INVEST-modelo-cpu-gt710.md`)**: default `qwen2.5-coder:7b` -> `qwen3:1.7b` Q4_K_M (2.0B, tools+thinking, Apache 2.0) verificado con `ollama show` (`2026-09-30`). `qwen3:1.7b` descargado (1.4 GB) junto a `qwen2.5:3b` existente como fallback inmediato.
 
 ### Fixed

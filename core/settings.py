@@ -39,9 +39,10 @@ class SettingsManager:
         "agent": {
             "enabled": True,             # asistente IA local activo
             "url": "http://localhost:11434",
-            "model": "qwen3:1.7b",
+            "model": "qwen3:0.6b",
             "timeout_s": 180,            # timeout por llamada a Ollama (CPU GT710)
             "max_steps": 5,              # pasos maximos del loop por turno (CPU)
+            "think": False,              # razonamiento interno (True = 5x mas lento en CPU)
             "log_path": "agent_log.jsonl",
         },
     }
@@ -259,11 +260,11 @@ class SettingsManager:
 
     @property
     def agent_model(self) -> str:
-        return str(self._agent("model", "qwen3:1.7b")).strip() or "qwen3:1.7b"
+        return str(self._agent("model", "qwen3:0.6b")).strip() or "qwen3:0.6b"
 
     @agent_model.setter
     def agent_model(self, value: str) -> None:
-        self._set_agent("model", value.strip() or "qwen3:1.7b")
+        self._set_agent("model", value.strip() or "qwen3:0.6b")
 
     @property
     def agent_timeout_s(self) -> int:
@@ -286,6 +287,14 @@ class SettingsManager:
     @agent_max_steps.setter
     def agent_max_steps(self, value: int) -> None:
         self._set_agent("max_steps", max(1, min(20, int(value))))
+
+    @property
+    def agent_think(self) -> bool:
+        return bool(self._agent("think", False))
+
+    @agent_think.setter
+    def agent_think(self, value: bool) -> None:
+        self._set_agent("think", bool(value))
 
     @property
     def agent_log_path(self) -> str:

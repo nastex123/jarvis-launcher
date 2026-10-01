@@ -86,7 +86,7 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
             id: "1",
             role: "assistant",
             content:
-              "Sistema listo. Inferencia local activa con `qwen2.5-coder:7b` y búsqueda web en tiempo real disponible.",
+              "Sistema listo. Inferencia local activa con `qwen3:0.6b` y búsqueda web en tiempo real disponible.",
             timestamp: "10:30",
           },
         ],
@@ -344,7 +344,7 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
       return;
     }
 
-    // 3. Flujo normal con Ollama (qwen2.5-coder:7b) + Búsqueda Web
+    // 3. Flujo normal con Ollama (qwen3:0.6b CPU, think desactivado) + Búsqueda Web
     const needsSearch =
       enableWebSearch &&
       (lower.startsWith("busca") ||
@@ -378,7 +378,8 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder:7b",
+          model: "qwen3:0.6b",
+          think: false,
           messages: [
             {
               role: "system",

@@ -390,6 +390,7 @@ class JarvisUI(QWidget):
                 base_url=self._settings.agent_url,
                 model=self._settings.agent_model,
                 timeout_s=self._settings.agent_timeout_s,
+                think=self._settings.agent_think,
             ),
             {"repo_root": repo_root(), "model": self._settings.agent_model},
             max_steps=self._settings.agent_max_steps,
