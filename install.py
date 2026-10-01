@@ -19,6 +19,7 @@ Opciones:
     --run            lanzar el launcher clasico al terminar (usa el python del venv)
     --run-web        lanzar el HUD web al terminar (bridge :3002 + npm run dev)
     --pull-model     descarga el modelo Ollama CPU con `ollama pull`
+    --with-rust      instala Rust/Cargo con rustup si falta (desktop Tauri)
     --model NAME     modelo Ollama (defecto: qwen3:1.7b, perfil CPU GT710)
     --check-only     solo diagnostico
 
@@ -339,6 +340,87 @@ def check_ollama(model: str = "qwen3:1.7b", pull: bool = False) -> None:
                  f"(o re-ejecuta con --pull-model)")
 
 
+def check_rust(install: bool = False) -> bool:
+    """Detecta Rust/Cargo para el desktop Tauri; con install=True lo instala."""
+    if shutil.which("cargo") is not None and shutil.which("rustc") is not None:
+        try:
+            proc = subprocess.run(["cargo", "--version"], capture_output=True, text=True, timeout=30)
+            log_ok(f"Rust disponible ({(proc.stdout or '').strip() or 'cargo'})")
+        except OSError:
+            log_ok("Rust disponible (cargo en PATH)")
+        return True
+    if not install:
+        log_warn("Falta Rust/Cargo: el desktop Tauri no puede compilar. "
+                 "Re-ejecuta con --with-rust para instalarlo solo (rustup).")
+        return False
+    log_info("Instalando Rust (rustup, ~300 MB) ...")
+    if sys.platform == "win32":
+        if install_rust_windows():
+            return refresh_cargo_path()
+        return False
+    return install_rust_unix()
+
+
+def install_rust_windows() -> bool:
+    """Instala rustup en Windows via winget, con fallback a rustup-init.exe."""
+    if shutil.which("winget") is not None:
+        log_info("Instalando con winget (Rustlang.Rustup) ...")
+        proc = subprocess.run(
+            ["winget", "install", "-e", "--id", "Rustlang.Rustup",
+             "--accept-source-agreements", "--accept-package-agreements"],
+            timeout=900,
+        )
+        if proc.returncode == 0:
+            log_ok("rustup instalado via winget")
+            return True
+        log_warn("winget falló; se intenta con rustup-init.exe directo.")
+    import tempfile
+    import urllib.request as _url
+    url = "https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe"
+    tmp = os.path.join(tempfile.gettempdir(), "rustup-init.exe")
+    try:
+        log_info(f"Descargando rustup-init.exe ({url}) ...")
+        _url.urlretrieve(url, tmp)
+    except OSError as exc:
+        log_fail(f"No se pudo descargar rustup: {exc}")
+        return False
+    proc = subprocess.run([tmp, "-y", "--no-modify-path"], timeout=900)
+    if proc.returncode != 0:
+        log_fail("rustup-init.exe falló. Instálalo manual desde https://rustup.rs")
+        return False
+    log_ok("rustup instalado (perfil minimal, sin modificar PATH del sistema)")
+    return True
+
+
+def install_rust_unix() -> bool:
+    """Instala rustup en Linux/macOS via el script oficial."""
+    if shutil.which("curl") is None:
+        log_fail("Falta curl para instalar rustup. Instala curl y re-ejecuta con --with-rust.")
+        return False
+    proc = subprocess.run(
+        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal",
+        shell=True, timeout=900,
+    )
+    if proc.returncode != 0:
+        log_fail("El instalador de rustup falló. Ver https://rustup.rs")
+        return False
+    log_ok("rustup instalado (perfil minimal)")
+    return refresh_cargo_path()
+
+
+def refresh_cargo_path() -> bool:
+    """Agrega ~/.cargo/bin al PATH del proceso y verifica cargo."""
+    cargo_bin = os.path.join(HOME, ".cargo", "bin")
+    if os.path.isdir(cargo_bin) and cargo_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = cargo_bin + os.pathsep + os.environ.get("PATH", "")
+    if shutil.which("cargo") is None:
+        log_warn("Rust instalado pero cargo aún no está en el PATH de esta terminal. "
+                 "Cierra y abre una terminal nueva (o usa start_desktop.py desde una nueva).")
+        return False
+    log_ok("Cargo verificado en PATH")
+    return True
+
+
 def smoke_test(venv_py: str) -> bool:
     ok = True
     log_info("Smoke test: compileall ...")
@@ -381,6 +463,7 @@ def do_install(args) -> int:
         check_system_libs(venv_py)  # informativo, no bloquea
         ensure_linux_config()
     check_ollama(model=args.model, pull=args.pull_model)
+    check_rust(install=args.with_rust)
     if sys.platform != "win32":
         install_bin(venv_py)
         if not args.no_shortcut:
@@ -489,6 +572,7 @@ def main() -> int:
     parser.add_argument("--run", action="store_true", help="lanzar el launcher clasico al terminar")
     parser.add_argument("--run-web", action="store_true", help="lanzar el HUD web (bridge + Next dev)")
     parser.add_argument("--pull-model", action="store_true", help="descargar el modelo Ollama CPU")
+    parser.add_argument("--with-rust", action="store_true", help="instalar Rust/Cargo si falta (desktop Tauri)")
     parser.add_argument("--model", default="qwen3:1.7b", help="modelo Ollama (defecto: qwen3:1.7b)")
     parser.add_argument("--uninstall", action="store_true", help="desinstalar bin/.desktop/autostart")
     parser.add_argument("--purge", action="store_true", help="con --uninstall, borra settings/state")
@@ -502,6 +586,7 @@ def main() -> int:
     if args.check_only:
         ok = check_env()
         check_ollama(model=args.model, pull=False)
+        check_rust(install=False)
         return 0 if ok else 2
     if args.uninstall:
         if sys.platform == "win32":
