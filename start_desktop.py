@@ -40,8 +40,42 @@ def log_fail(msg: str) -> None:
     print(f"[FAIL] {msg}")
 
 
+def check_msvc() -> bool:
+    """Detecta el linker MSVC que Rust necesita en Windows (VS Code no sirve)."""
+    if sys.platform != "win32":
+        return True
+    if shutil.which("link.exe") is not None:
+        log_ok("MSVC linker disponible")
+        return True
+    vswhere = os.path.join(
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        "Microsoft Visual Studio", "Installer", "vswhere.exe",
+    )
+    if os.path.exists(vswhere):
+        proc = subprocess.run(
+            [vswhere, "-products", "*", "-requires",
+             "Microsoft.VisualStudio.Component.VC.Tools",
+             "-property", "installationPath"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if proc.stdout.strip():
+            log_ok("Visual Studio C++ Build Tools detectadas")
+            return True
+    log_fail("Falta el compilador C++ de Visual Studio (Rust MSVC lo exige).")
+    print("  Instala SOLO las Build Tools con C++ (~6 GB), una de estas dos:")
+    print('  winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"')
+    print("  o GUI: https://visualstudio.microsoft.com/downloads/ -> Build Tools -> "
+          "marcar 'Desarrollo para escritorio con C++'.")
+    print("  Nota: VS Code es otro producto y NO trae compilador. Reinicia la terminal tras instalar.")
+    return False
+
+
 def check_env() -> bool:
     ok = True
+    # Rust recien instalado no esta en el PATH de terminales viejas: refrescar.
+    cargo_bin = os.path.join(os.path.expanduser("~"), ".cargo", "bin")
+    if os.path.isdir(cargo_bin) and cargo_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = cargo_bin + os.pathsep + os.environ.get("PATH", "")
     if not os.path.exists(os.path.join(WEB_DIR, "package.json")):
         log_fail("No existe src-web/package.json (usa la rama dev).")
         return False
@@ -63,6 +97,8 @@ def check_env() -> bool:
         log_warn("Ollama no instalado: el chat quedara offline (https://ollama.com).")
     else:
         log_ok("ollama disponible")
+    if not check_msvc():
+        ok = False
     return ok
 
 

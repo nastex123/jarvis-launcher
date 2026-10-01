@@ -340,6 +340,49 @@ def check_ollama(model: str = "qwen3:1.7b", pull: bool = False) -> None:
                  f"(o re-ejecuta con --pull-model)")
 
 
+def check_msvc(install: bool = False) -> bool:
+    """Detecta el linker MSVC que Rust exige en Windows (VS Code no sirve)."""
+    if sys.platform != "win32":
+        return True
+    if shutil.which("link.exe") is not None:
+        log_ok("MSVC linker disponible")
+        return True
+    vswhere = os.path.join(
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        "Microsoft Visual Studio", "Installer", "vswhere.exe",
+    )
+    if os.path.exists(vswhere):
+        proc = subprocess.run(
+            [vswhere, "-products", "*", "-requires",
+             "Microsoft.VisualStudio.Component.VC.Tools",
+             "-property", "installationPath"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if proc.stdout.strip():
+            log_ok("Visual Studio C++ Build Tools detectadas")
+            return True
+    if install and shutil.which("winget") is not None:
+        log_info("Instalando VS 2022 Build Tools con C++ (~6 GB, tarda 15-30 min) ...")
+        proc = subprocess.run(
+            ["winget", "install", "-e", "--id", "Microsoft.VisualStudio.2022.BuildTools",
+             "--override", "--quiet --wait --norestart --nocache "
+                           "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended",
+             "--accept-source-agreements", "--accept-package-agreements"],
+            timeout=3600,
+        )
+        if proc.returncode == 0:
+            log_ok("VS Build Tools instaladas (reinicia la terminal)")
+            return True
+        log_fail("winget falló con Build Tools. Instálalas a mano: "
+                 "https://visualstudio.microsoft.com/downloads/ -> Build Tools -> "
+                 "'Desarrollo para escritorio con C++'. (VS Code NO trae compilador.)")
+        return False
+    log_warn("Falta el compilador C++ de Visual Studio (Rust MSVC lo exige para Tauri). "
+             "Re-ejecuta con --with-rust para instalarlo, o a mano desde "
+             "https://visualstudio.microsoft.com/downloads/ (VS Code NO sirve).")
+    return False
+
+
 def check_rust(install: bool = False) -> bool:
     """Detecta Rust/Cargo para el desktop Tauri; con install=True lo instala."""
     if shutil.which("cargo") is not None and shutil.which("rustc") is not None:
@@ -348,6 +391,7 @@ def check_rust(install: bool = False) -> bool:
             log_ok(f"Rust disponible ({(proc.stdout or '').strip() or 'cargo'})")
         except OSError:
             log_ok("Rust disponible (cargo en PATH)")
+        check_msvc(install=install)
         return True
     if not install:
         log_warn("Falta Rust/Cargo: el desktop Tauri no puede compilar. "
@@ -355,10 +399,14 @@ def check_rust(install: bool = False) -> bool:
         return False
     log_info("Instalando Rust (rustup, ~300 MB) ...")
     if sys.platform == "win32":
-        if install_rust_windows():
-            return refresh_cargo_path()
+        if install_rust_windows() and refresh_cargo_path():
+            check_msvc(install=True)
+            return True
         return False
-    return install_rust_unix()
+    if install_rust_unix():
+        check_msvc(install=True)
+        return True
+    return False
 
 
 def install_rust_windows() -> bool:
