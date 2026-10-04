@@ -1,0 +1,28 @@
+# RustDesk Server propio — hbbs (rendezvous) + hbbr (relay) para Jarvis Mobile.
+# Solo LAN o VPS con puertos 21115-21117 TCP/UDP. Nunca exponer sin KEY.
+# Paso 1: copiar KEY generada del primer arranque a .env y a Expo.
+# Paso 2: docker compose -f docker-compose.rustdesk.yml up -d
+# Paso 3: en Expo tab Escritorio usar device_id + hbbs/hbbr de abajo.
+
+services:
+  hbbs:
+    image: rustdesk/rustdesk-server:latest
+    container_name: jarvis-hbbs
+    command: hbbs -r ${JARVIS_PUBLIC_HOST:-127.0.0.1} -k ${RUSTDESK_KEY:?Configura RUSTDESK_KEY en .env}
+    volumes:
+      - ./data/rustdesk:/root
+    ports:
+      - "21115:21115"
+      - "21116:21116"
+      - "21116:21116/udp"
+    restart: unless-stopped
+
+  hbbr:
+    image: rustdesk/rustdesk-server:latest
+    container_name: jarvis-hbbr
+    command: hbbr -k ${RUSTDESK_KEY:?Configura RUSTDESK_KEY en .env}
+    volumes:
+      - ./data/rustdesk:/root
+    ports:
+      - "21117:21117"
+    restart: unless-stopped

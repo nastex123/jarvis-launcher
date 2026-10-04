@@ -102,6 +102,10 @@
 
 ## En progreso
 
+- [x] QA LAN gateway `tests/qa_gateway_lan.py` 10/10 en `chore/scalable-base` — health, 401 sin auth, pairing/exchange JWT, modes x3, 404 sin lanzar, rustdesk handoff, reject, `rm -rf /` 403, chat 502 offline aceptado — verificado 2026-10-04
+- [x] Compose RustDesk propio en `chore/scalable-base`: `docker-compose.rustdesk.yml` hbbs/hbbr `config --quiet` OK + `.env.example` KEY — verificado 2026-10-04
+- [x] Base Expo 4 tabs en `chore/scalable-base`: `apps/mobile-expo/` typecheck OK — client ESPEC-remoto, Chat/Modos/Escritorio/Aprobar, HudLite, NativeWind — verificado 2026-10-04
+- [x] Gateway movil MVP Fase 1 en `chore/scalable-base`: `apps/gateway/` FastAPI + JWT/QR + `docs/ESPEC-remoto.md` + `docs/ROADMAP-movil.md` + `tests/test_gateway_auth.py` 2/2 + import routes OK — verificado 2026-10-04
 - [x] Perfil CPU GT710: default `qwen3:1.7b` (`num_ctx 4096`, `timeout 180s`, `MAX_STEPS 5`) + `ollama pull qwen3:1.7b` verificado (1.4 GB, tools OK) — docs/INVEST-modelo-cpu-gt710.md
 
 - [x] Documentación del asistente IA local: ADR-013, ADR-014, ESPEC (incl.

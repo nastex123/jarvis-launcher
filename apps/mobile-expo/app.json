@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Jarvis Mobile",
+    "slug": "jarvis-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "primaryColor": "#000000",
+    "backgroundColor": "#000000"
+  }
+}

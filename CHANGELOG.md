@@ -9,6 +9,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **QA LAN gateway 10/10 (`tests/qa_gateway_lan.py`)**: uvicorn localhost — health 3 modos, 401 sin auth, pairing QR + exchange JWT, 404 sin lanzar apps, handoff RustDesk, reject + `rm -rf /` 403 `DENIED_BY_POLICY`, chat 502 offline aceptado.
+- **Compose RustDesk propio Fase 4 (`docker-compose.rustdesk.yml`)**: hbbs 21115-21116 + hbbr 21117 fail-fast `RUSTDESK_KEY`, `compose config --quiet` OK — handoff `GET /api/rustdesk` + tab Escritorio Expo, Tailscale fallback.
+- **Base Expo 4 tabs Fase 3 (`apps/mobile-expo/`)**: cliente movil verificado `tsc --noEmit` — `src/api/client.ts` tipado ESPEC-remoto, screens Chat/Modos/Escritorio/Aprobar, `HudLite.tsx` 30fps reduced-motion, NativeWind Tailwind + shadcn movil, `app.json` + `typecheck`.
+- **Gateway movil MVP Fase 1 (`apps/gateway/`, `docs/ESPEC-remoto.md`, `docs/ROADMAP-movil.md`)**: FastAPI opcion 1 aprobada en `chore/scalable-base` — `GET /health`, `GET /api/pairing` QR LAN, `POST /api/pairing/exchange` JWT 15 min stdlib, `GET /api/modes`, `POST /api/modes/run` idempotente reutilizando `core.config` + `core.launcher`, `POST /api/chat/turn` + `POST /api/decide` con `check_shell`/`DENIED_BY_POLICY`, `GET /api/rustdesk` handoff hbbs/hbbr propio, `WS /ws/chat/stream`. Rama base escalable a telefono Expo + control PC tipo RustDesk.
+
+### Added
 - **Modelo ultraliviano `qwen3:0.6b` + `think:false` por defecto (CPU) (`core/agent/ollama.py`, `core/settings.py`, `ui/jarvis_ui.py`, `ChatPanel.tsx`, `install.py`)**: `hola` 44.5 s -> 5.4 s y tool-call 9.6 s limpio sin `<tool_result>` fabricado en Ryzen 5500 CPU (`2026-10-01`). Nueva clave `agent.think` (defecto False) cableada al payload `/api/chat`.
 
 ### Added
