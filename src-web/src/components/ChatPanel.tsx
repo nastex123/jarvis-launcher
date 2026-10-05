@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Copy, Check, X, History, Plus, Globe, Trash2, Terminal, AlertTriangle, ShieldCheck, Cpu } from "lucide-react";
+import { Send, Copy, Check, X, History, Plus, Globe, Trash2, Terminal, AlertTriangle, ShieldCheck, Cpu, Paperclip } from "lucide-react";
 import { searchWeb } from "@/lib/search";
 import { executeSystemCommand, runOpenCodeAgent, isDangerousCommand } from "@/lib/system";
 
@@ -46,8 +46,30 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
   const [showHistory, setShowHistory] = useState(false);
   const [enableWebSearch, setEnableWebSearch] = useState(true);
 
-  // Motor de IA: 'ollama' (qwen2.5) o 'opencode' (agente terminal autónomo)
+  // Motor de IA: 'ollama' (llama3.2:1b local) o 'opencode' (agente terminal autónomo)
   const [engineMode, setEngineMode] = useState<"ollama" | "opencode">("ollama");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFile = async (file: File) => {
+    try {
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("http://127.0.0.1:3002/api/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, data_b64: b64 }),
+      });
+      const data = await res.json();
+      const texto = data.output || data.error || "(sin texto)";
+      await handleSend(`Imagen ${file.name} dice:\n${String(texto).slice(0, 4000)}`);
+    } catch (err) {
+      await handleSend(`[OCR] No se pudo leer la imagen: ${(err as Error).message}. Activa el bridge :3002.`);
+    }
+  };
 
   // Estado para confirmación destructiva interactiva
   const [pendingDanger, setPendingDanger] = useState<{
@@ -86,7 +108,7 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
             id: "1",
             role: "assistant",
             content:
-              "Sistema listo. Inferencia local activa con `qwen3:0.6b` y búsqueda web en tiempo real disponible.",
+              "Sistema listo. Inferencia local activa con `llama3.2:1b` y búsqueda web en tiempo real disponible.",
             timestamp: "10:30",
           },
         ],
@@ -344,7 +366,7 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
       return;
     }
 
-    // 3. Flujo normal con Ollama (qwen3:0.6b CPU, think desactivado) + Búsqueda Web
+    // 3. Flujo normal con Ollama (llama3.2:1b local, think desactivado) + Búsqueda Web
     const needsSearch =
       enableWebSearch &&
       (lower.startsWith("busca") ||
@@ -378,7 +400,7 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen3:0.6b",
+          model: "llama3.2:1b",
           think: false,
           messages: [
             {
@@ -737,6 +759,13 @@ export default function ChatPanel({ onClose, isThinking, setIsThinking }: ChatPa
           }}
           className="flex items-center gap-2"
         >
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/bmp,image/tiff,image/webp" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ""; }} />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={isThinking}
+            title="Adjuntar imagen para OCR (PaddleOCR via bridge :3002)"
+            className="px-2 py-1.5 text-[#a1a1aa] hover:text-[#ffffff] border border-[#27272a] rounded transition cursor-pointer disabled:opacity-30">
+            <Paperclip className="w-3 h-3" />
+          </button>
           <input
             type="text"
             value={input}

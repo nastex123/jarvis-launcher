@@ -4,3 +4,11 @@ PyQt6>=6.5.0
 # completos dentro del launcher). Es OPCIONAL: si no se instala, el lector
 # funciona igual con el resumen del feed (modo texto).
 PyQt6-WebEngine>=6.7
+
+# Lectura de imagenes con PaddleOCR (Fase 2 OCR). OPCIONAL con degradado:
+# - Recomendado Windows/Python 3.14: rapidocr-onnxruntime (PP-OCR via ONNX,
+#   ~100 MB, sin paddlepaddle). Ya verificado en este PC (1.2.3).
+# - Alterno clasico: paddleocr + paddlepaddle (~1 GB, puede fallar en 3.14).
+# Si no se instala, read_image/see_screen responden OCR_UNAVAILABLE.
+rapidocr-onnxruntime>=1.2.0
+Pillow>=10.0

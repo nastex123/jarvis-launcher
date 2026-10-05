@@ -39,11 +39,12 @@ class SettingsManager:
         "agent": {
             "enabled": True,             # asistente IA local activo
             "url": "http://localhost:11434",
-            "model": "qwen3:0.6b",
+            "model": "llama3.2:1b",
             "timeout_s": 180,            # timeout por llamada a Ollama (CPU GT710)
             "max_steps": 5,              # pasos maximos del loop por turno (CPU)
             "think": False,              # razonamiento interno (True = 5x mas lento en CPU)
             "log_path": "agent_log.jsonl",
+            "ocr_context_n": 2,          # lecturas OCR del JSON inyectadas a Llama (0-5)
         },
     }
 
@@ -260,11 +261,11 @@ class SettingsManager:
 
     @property
     def agent_model(self) -> str:
-        return str(self._agent("model", "qwen3:0.6b")).strip() or "qwen3:0.6b"
+        return str(self._agent("model", "llama3.2:1b")).strip() or "llama3.2:1b"
 
     @agent_model.setter
     def agent_model(self, value: str) -> None:
-        self._set_agent("model", value.strip() or "qwen3:0.6b")
+        self._set_agent("model", value.strip() or "llama3.2:1b")
 
     @property
     def agent_timeout_s(self) -> int:
@@ -303,3 +304,14 @@ class SettingsManager:
     @agent_log_path.setter
     def agent_log_path(self, value: str) -> None:
         self._set_agent("log_path", value.strip() or "agent_log.jsonl")
+
+    @property
+    def agent_ocr_context_n(self) -> int:
+        try:
+            return max(0, min(5, int(self._agent("ocr_context_n", 2))))
+        except (TypeError, ValueError):
+            return 2
+
+    @agent_ocr_context_n.setter
+    def agent_ocr_context_n(self, value: int) -> None:
+        self._set_agent("ocr_context_n", max(0, min(5, int(value))))

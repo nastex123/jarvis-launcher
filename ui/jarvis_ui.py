@@ -392,7 +392,8 @@ class JarvisUI(QWidget):
                 timeout_s=self._settings.agent_timeout_s,
                 think=self._settings.agent_think,
             ),
-            {"repo_root": repo_root(), "model": self._settings.agent_model},
+            {"repo_root": repo_root(), "model": self._settings.agent_model,
+             "ocr_context_n": self._settings.agent_ocr_context_n},
             max_steps=self._settings.agent_max_steps,
         )
         self._agent_worker.agentReply.connect(self._chat_panel.agentReply)
@@ -474,7 +475,8 @@ class JarvisUI(QWidget):
         client.base_url = self._settings.agent_url
         client.model = self._settings.agent_model
         client.timeout_s = self._settings.agent_timeout_s
-        self._agent_worker.update_ctx(model=self._settings.agent_model)
+        self._agent_worker.update_ctx(model=self._settings.agent_model,
+                                        ocr_context_n=self._settings.agent_ocr_context_n)
         self._agent_worker.set_max_steps(self._settings.agent_max_steps)
 
     def _append_agent_log(self, event: dict) -> None:

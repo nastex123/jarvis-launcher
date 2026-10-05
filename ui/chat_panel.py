@@ -15,6 +15,7 @@ import logging
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QShortcut, QKeySequence, QTextDocument
 from PyQt6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -90,6 +91,18 @@ class ChatPanel(QWidget):
         self._input.setPlaceholderText("Pregunta o pide algo a J.A.R.V.I.S. …")
         self._input.returnPressed.connect(self._send_from_input)
         input_row.addWidget(self._input, 1)
+        self._attach_btn = QPushButton("Adjuntar")
+        self._attach_btn.setFixedSize(72, 32)
+        self._attach_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._attach_btn.setToolTip("Adjuntar imagen para OCR (png/jpg/bmp/tiff/webp)")
+        self._attach_btn.clicked.connect(self._attach_image)
+        input_row.addWidget(self._attach_btn)
+        self._screen_btn = QPushButton("Pantalla")
+        self._screen_btn.setFixedSize(72, 32)
+        self._screen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._screen_btn.setToolTip("Capturar pantalla y leer su texto (see_screen)")
+        self._screen_btn.clicked.connect(lambda: self._send("Qué ves en mi pantalla?"))
+        input_row.addWidget(self._screen_btn)
         self._send_btn = QPushButton("➤")
         self._send_btn.setFixedSize(36, 32)
         self._send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -122,6 +135,11 @@ class ChatPanel(QWidget):
             f"border: 1px solid {them.accent}; border-radius: 8px; font-size: 14px; }}"
             f"QPushButton:hover {{ background: {them.accent}; color: {them.bg}; }}"
         )
+        for _btn in (self._attach_btn, self._screen_btn):
+            _btn.setStyleSheet(
+                f"background: transparent; color: {them.text_dim}; font-size: 10px;"
+                f"border: 1px solid {them.card_border}; border-radius: 8px; padding: 4px;"
+            )
         for i in range(self._suggest_row.count()):
             btn = self._suggest_row.itemAt(i).widget()
             if isinstance(btn, QPushButton):
@@ -156,9 +174,19 @@ class ChatPanel(QWidget):
         self._add_bubble(text, who="user")
         self.messageSent.emit(text)
 
+    def _attach_image(self) -> None:
+        """Abre dialogo de imagen y pide al agente leerla (flujo con tarjeta)."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Adjuntar imagen para OCR",
+            "", "Imágenes (*.png *.jpg *.jpeg *.bmp *.tiff *.webp)")
+        if path:
+            self._send(f"Lee esta imagen: {path}")
+
     def set_busy(self, busy: bool) -> None:
         self._input.setEnabled(not busy)
         self._send_btn.setEnabled(not busy)
+        self._attach_btn.setEnabled(not busy)
+        self._screen_btn.setEnabled(not busy)
 
     def clear(self) -> None:
         while self._stream_layout.count() > 1:  # conserva el stretch final

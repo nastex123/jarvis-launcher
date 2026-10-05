@@ -498,3 +498,45 @@ Cambiar este texto o el catálogo de tools ⇒ bump de versión (`V3`…) + CHAN
 1. ¿`list_apps` debe incluir apps Flatpak con su `flatpak run` completo? (propuesta: sí, reutilizando el parseo de `launcher.py`)
 2. ¿Límite de turnos/historial en memoria al cerrar y reabrir el panel en la
    misma sesión? (propuesta: se conserva; al cerrar la app se pierde)
+
+## Addendum 2026-10-05 — Modelo `llama3.2:1b` + OCR PaddleOCR (ADR-016)
+
+- Default `agent.model`: `qwen2.5-coder:7b`/`qwen3:0.6b` -> `llama3.2:1b` Q8_0
+  (verificado `ollama list`: capabilities `completion+tools`, `context 131072`;
+  en vivo emite `tool_calls` con `arguments` débiles — cubierto por fallback
+  JSON §3.4.1/§3.4.3 + validación tolerante de `execute_tool`).
+- Catálogo 9 -> 11 tools (§3.3): `read_image(path)` (png/jpg/bmp/tiff/webp,
+  máx 20 MB, riesgo `read`) y `see_screen()` (captura QScreen/ImageGrab,
+  downscale 1600 px, riesgo `read`). Motor `core/agent/vision_ocr.py`
+  (RapidOCR ONNX PP-OCR preferido, `paddleocr` alterno, `OCR_UNAVAILABLE`
+  si ausente). Errores: `FILE_NOT_FOUND`, `NOT_AN_IMAGE`, `FILE_TOO_LARGE`,
+  `OCR_UNAVAILABLE`, `CAPTURE_FAILED`.
+- System prompt `AGENT_SYS_V4` (default en `loop.run_turn`): V3 + regla 11
+  imágenes + lista 11 tools + ejemplo `read_image`. Aliases V1/V2/V3 intactos.
+- OCR entra como DATOS (regla 4): jamás dispara tools encadenadas sin tarjeta.
+
+> [!WARNING]
+> `llama3.2:1b` 1.2B es menos disciplinado que qwen en args. Si ves
+> `INVALID_ARGS` frecuentes, evalúa volver a `qwen3:1.7b` o `llama3.2:3b`.
+
+## Addendum 2 2026-10-05 — OCR persistente en JSON (ADR-017)
+
+- Cada OCR ok se anexa a `agent_ocr.jsonl` y publica `ocr_last.json`
+  (`core/agent/ocr_store.py`, stdlib, gitignored, nunca lanza). Campos:
+  `id`, `ts` (Bogotá), `source`, `kind` (`read_image`|`see_screen`), `engine`,
+  `lines`, `chars`, `truncated`, `text` (máx 20000).
+- Nueva tool `query_ocr` (§3.3, riesgo `read`): `{"ocr_id"?,"last_n"?}`.
+  Errores: `OCR_NOT_FOUND`, `OCR_EMPTY`. Catálogo 11 → 12 tools.
+- `run_turn` inyecta `[OCR reciente]` (últimas N, setting
+  `agent.ocr_context_n` default 2, rango 0–5) como segundo mensaje system,
+  reemplazando el bloque previo cada turno; el gateway hace lo mismo en
+  `/api/chat/turn`. `tool_result_message` propaga `ocr_id`, `json_path`,
+  `engine`, `lines`, `screenshot_path`.
+- System prompt `AGENT_SYS_V5` (default): V4 + regla 12 (responder desde el
+  JSON sin releer; `query_ocr` para lecturas anteriores) + ejemplo.
+  Complejidad por turno: `O(k)` tokens OCR (cap ~4000 chars).
+
+> [!NOTE]
+> Sin cambios frontend: tarjetas y burbujas existentes muestran el texto;
+> el JSON solo alimenta el contexto de Llama en backend/gateway/bridge.
+

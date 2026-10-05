@@ -16,6 +16,8 @@ La documentación de usuario (qué es y cómo usarlo) vive en el
 | [ADR-013-motor-agentico-local.md](./ADR-013-motor-agentico-local.md) | Decisión: asistente IA local con Ollama `qwen2.5-coder:7b` (v3.0.0, Fase 1) |
 | [ADR-014-politica-confirmacion.md](./ADR-014-politica-confirmacion.md) | Decisión: confirmar-todo + lista negra de shell (seguridad del agente) |
 | [ADR-015-frontend-nextjs-pixi-tauri.md](./ADR-015-frontend-nextjs-pixi-tauri.md) | Decisión: Frontend Next.js 16, PixiJS v8, Esfera/Vórtice ASCII 3D, Doble Motor (Ollama + OpenCode) y Tauri v2 |
+| [ADR-016-modelo-llama-ocr-paddle.md](./ADR-016-modelo-llama-ocr-paddle.md) | Decisión: default `llama3.2:1b` + OCR PaddleOCR local (`read_image`/`see_screen`, V4) |
+| [ADR-017-ocr-json-para-llama.md](./ADR-017-ocr-json-para-llama.md) | Decisión: OCR persistente en JSON (`agent_ocr.jsonl` + `ocr_last.json`, `query_ocr`, V5) |
 | [ESPEC-agente-fase1.md](./ESPEC-agente-fase1.md) | Especificación normativa Fase 1: tools, loop, system prompt, UX, settings, log, casos borde |
 | [PLAN-fases.md](./PLAN-fases.md) | Roadmap Fases 1–4 (chat+sistema, visión, web, voz) |
 | [TEST-agente.md](./TEST-agente.md) | Plan de pruebas del agente: suites A–D + checklist manual |

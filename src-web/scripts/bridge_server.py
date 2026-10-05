@@ -26,6 +26,22 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
         self._set_cors()
         self.end_headers()
 
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/ocr/last":
+            try:
+                import importlib.util as _ilu
+
+                _vision_path = os.path.join(REPO_ROOT, "core", "agent", "ocr_store.py")
+                _spec = _ilu.spec_from_file_location("jarvis_ocr_store", _vision_path)
+                _store = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_store)
+                self._send_json({"ok": True, **_store.load_last(REPO_ROOT)})
+            except Exception as e:
+                self._send_json({"error": str(e), "ok": False}, 500)
+            return
+        self._send_json({"error": "Ruta no encontrada"}, 404)
+
     def do_POST(self):
         parsed = urlparse(self.path)
         content_length = int(self.headers.get("Content-Length", 0))
@@ -90,6 +106,51 @@ class BridgeHandler(http.server.BaseHTTPRequestHandler):
                 launcher = AppLauncher()
                 res = launcher.launch_mode(apps)
                 self._send_json({"ok": True, "message": f"Modo {mode_id} procesado", "result": res})
+            except Exception as e:
+                self._send_json({"error": str(e), "ok": False}, 500)
+
+        elif parsed.path == "/api/ocr":
+            # OCR local PaddleOCR: {"path": "..."} o {"filename": "...", "data_b64": "..."}.
+            try:
+                import importlib.util as _ilu
+
+                _vision_path = os.path.join(REPO_ROOT, "core", "agent", "vision_ocr.py")
+                _spec = _ilu.spec_from_file_location("jarvis_vision_ocr", _vision_path)
+                _vision = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_vision)
+                ocr_image_file = _vision.ocr_image_file
+                capture_screen = _vision.capture_screen
+                if payload.get("screen") is True:
+                    self._send_json({**capture_screen(repo_root=REPO_ROOT), "ok": True})
+                    return
+                data_b64 = payload.get("data_b64", "")
+                if data_b64:
+                    import base64
+                    import tempfile
+                    raw = base64.b64decode(data_b64.split(",", 1)[-1])
+                    if len(raw) > 20 * 1024 * 1024:
+                        self._send_json({"error": "Imagen > 20 MB", "ok": False}, 400)
+                        return
+                    suffix = os.path.splitext(str(payload.get("filename", "img.png")))[1] or ".png"
+                    if suffix.lower() not in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"):
+                        suffix = ".png"
+                    fd, tmp = tempfile.mkstemp(prefix="jarvis_web_", suffix=suffix)
+                    os.close(fd)
+                    with open(tmp, "wb") as fh:
+                        fh.write(raw)
+                    res = ocr_image_file(tmp, repo_root=REPO_ROOT)
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    self._send_json({**res, "ok": res.get("status") == "ok"})
+                    return
+                path = str(payload.get("path", ""))
+                if not path:
+                    self._send_json({"error": "Falta path o data_b64", "ok": False}, 400)
+                    return
+                res = ocr_image_file(path, repo_root=REPO_ROOT)
+                self._send_json({**res, "ok": res.get("status") == "ok"})
             except Exception as e:
                 self._send_json({"error": str(e), "ok": False}, 500)
 

@@ -1,8 +1,9 @@
 """
-core/agent/tools.py - Catálogo de tools de Fase 1 (ESPEC §3.3).
+core/agent/tools.py - Catálogo de tools de Fase 1 + OCR Fase 2 (ESPEC §3.3).
 
-9 tools: read_file, list_dir, search, write_file, edit_file, run_shell,
-open_app, list_apps, get_system_info. Solo stdlib. Cada ToolSpec lleva su
+12 tools: read_file, list_dir, search, write_file, edit_file, run_shell,
+open_app, list_apps, get_system_info, read_image, see_screen, query_ocr.
+Solo stdlib salvo vision_ocr (rapidocr/paddle opcional). Cada ToolSpec lleva su
 JSON-schema, nivel de riesgo y plantilla de resumen en español (el resumen
 lo construye código local, nunca el modelo — ADR-014 §2).
 """
@@ -356,6 +357,23 @@ def _exec_system_info(args: dict, ctx: dict) -> dict:
     except (OSError, KeyError, ValueError):
         pass
     try:
+        import ctypes  # noqa: E402 - RAM real en Windows sin psutil
+
+        if sys.platform == "win32":
+            class _MS(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            st = _MS()
+            st.dwLength = ctypes.sizeof(_MS)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                ram_total = f"{st.ullTotalPhys // (1024 * 1024)} MB"
+                ram_free = f"{st.ullAvailPhys // (1024 * 1024)} MB"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from core.version import get_app_version
 
         app_version = get_app_version()
@@ -378,6 +396,51 @@ def _exec_system_info(args: dict, ctx: dict) -> dict:
             "app_version": app_version,
         },
     }
+
+
+def _exec_read_image(args: dict, ctx: dict) -> dict:
+    from core.agent.vision_ocr import ocr_image_file
+
+    return ocr_image_file(args["path"], repo_root=ctx.get("repo_root", "."))
+
+
+def _exec_see_screen(args: dict, ctx: dict) -> dict:
+    from core.agent.vision_ocr import capture_screen
+
+    return capture_screen(repo_root=ctx.get("repo_root", "."))
+
+
+def _exec_query_ocr(args: dict, ctx: dict) -> dict:
+    from core.agent.ocr_store import get_by_id, load_recent
+
+    repo_root = ctx.get("repo_root", ".")
+    ocr_id = str(args.get("ocr_id", "") or "").strip()
+    if ocr_id:
+        entry = get_by_id(ocr_id, repo_root=repo_root)
+        if not entry:
+            return _err("OCR_NOT_FOUND", f"sin lectura con id '{ocr_id}'")
+        return {"status": "ok", "output": entry.get("text", ""),
+                "ocr_id": entry.get("id"), "source": entry.get("source"),
+                "ts": entry.get("ts"), "lines": entry.get("lines"),
+                "engine": entry.get("engine")}
+    try:
+        last_n = max(1, min(5, int(args.get("last_n", 1))))
+    except (TypeError, ValueError):
+        last_n = 1
+    entries = load_recent(repo_root, last_n)
+    if not entries:
+        return _err("OCR_EMPTY", "aún no hay lecturas OCR en agent_ocr.jsonl")
+    if last_n == 1:
+        e = entries[-1]
+        return {"status": "ok", "output": e.get("text", ""),
+                "ocr_id": e.get("id"), "source": e.get("source"),
+                "ts": e.get("ts"), "lines": e.get("lines"),
+                "engine": e.get("engine")}
+    return {"status": "ok",
+            "output": [{"ocr_id": e.get("id"), "source": e.get("source"),
+                        "ts": e.get("ts"), "lines": e.get("lines"),
+                        "text": e.get("text", "")} for e in entries],
+            "total": len(entries)}
 
 
 def _err(code: str, detail: str) -> dict:
@@ -453,6 +516,24 @@ TOOLS: list[ToolSpec] = [
         "get_system_info", "SO, CPU, RAM, disco, modelo y versión.",
         {"type": "object", "properties": {}, "required": []},
         "read", "Consultar información del sistema"),
+    ToolSpec(
+        "read_image", "Lee el texto de una imagen local con PaddleOCR (png/jpg/bmp/tiff/webp, máx 20 MB).",
+        {"type": "object",
+         "properties": {"path": {"type": "string", "description": "Ruta a la imagen"}},
+         "required": ["path"]},
+        "read", "Leer texto de la imagen {path}"),
+    ToolSpec(
+        "see_screen", "Captura la pantalla principal y lee su texto con PaddleOCR (downscale 1600 px).",
+        {"type": "object", "properties": {}, "required": []},
+        "read", "Capturar pantalla y leer su texto"),
+    ToolSpec(
+        "query_ocr", "Recupera texto OCR ya guardado en JSON (por id o las últimas N).",
+        {"type": "object",
+         "properties": {"ocr_id": {"type": "string", "description": "Id (o prefijo) de la lectura"},
+                        "last_n": {"type": "integer", "default": 1,
+                                   "minimum": 1, "maximum": 5}},
+         "required": []},
+        "read", "Recuperar OCR guardado {ocr_id}"),
 ]
 
 REGISTRY: dict[str, callable] = {
@@ -465,6 +546,9 @@ REGISTRY: dict[str, callable] = {
     "open_app": _exec_open_app,
     "list_apps": _exec_list_apps,
     "get_system_info": _exec_system_info,
+    "read_image": _exec_read_image,
+    "see_screen": _exec_see_screen,
+    "query_ocr": _exec_query_ocr,
 }
 
 

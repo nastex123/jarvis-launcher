@@ -111,7 +111,12 @@
 - [x] Documentación del asistente IA local: ADR-013, ADR-014, ESPEC (incl.
       §3.4.1 fallback JSON), PLAN-fases, TEST-agente, Arquitectura §8,
       README índice, CHANGELOG, TODO
+- [x] Modelo local `llama3.2:1b` (2026-10-05): default en `ollama.py`/`settings.py`/`install.py`/`gateway`/`ChatPanel.tsx` + `ollama list` tools OK (emite tool_calls con args débiles, cubierto por fallback JSON)
+- [x] OCR PaddleOCR local (2026-10-05): `core/agent/vision_ocr.py` (RapidOCR ONNX) + tools `read_image`/`see_screen` (11 total, `AGENT_SYS_V4`) + UI Qt `Adjuntar`/`Pantalla` + bridge `POST /api/ocr` + botón web — verificado OCR real + bridge 200 + compileall OK — docs ADR-016
+- [x] OCR persistente en JSON para Llama (2026-10-05): `core/agent/ocr_store.py` (`agent_ocr.jsonl` + `ocr_last.json`, gitignored) + tool `query_ocr` (12 tools, `AGENT_SYS_V5`) + inyección `[OCR reciente]` en `run_turn`/gateway (`agent.ocr_context_n`=2) + bridge `GET /api/ocr/last` — verificado store/query/flow OK — docs ADR-017
 - [ ] Checklist manual M1–M10 del agente en GUI real (TEST-agente.md)
+- [ ] Checklist manual OCR: adjuntar png con factura, `see_screen` con VS Code, imagen sin texto, motor ausente (`OCR_UNAVAILABLE`), `settings.json` local a `llama3.2:1b`
+- [ ] Checklist manual OCR-JSON: leer imagen → preguntar "qué total dice" sin readjuntar (usa `[OCR reciente]`), `query_ocr` por id, reiniciar app y preguntar de nuevo (lee del JSON), `GET /api/ocr/last` en web
 
 ## Pendiente
 

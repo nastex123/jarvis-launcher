@@ -20,7 +20,7 @@ Opciones:
     --run-web        lanzar el HUD web al terminar (bridge :3002 + npm run dev)
     --pull-model     descarga el modelo Ollama CPU con `ollama pull`
     --with-rust      instala Rust/Cargo con rustup si falta (desktop Tauri)
-    --model NAME     modelo Ollama (defecto: qwen3:0.6b, perfil CPU GT710)
+    --model NAME     modelo Ollama (defecto: llama3.2:1b, instalado local)
     --check-only     solo diagnostico
 
 Lo que hace, por etapas:
@@ -302,7 +302,7 @@ def install_desktop_file(venv_py: str, dest: str, autostart: bool = False) -> No
         )
 
 
-def check_ollama(model: str = "qwen3:0.6b", pull: bool = False) -> None:
+def check_ollama(model: str = "llama3.2:1b", pull: bool = False) -> None:
     """Verifica Ollama para el asistente (aviso, no bloquea la instalación)."""
     import json as _json
     import urllib.request as _url
@@ -338,6 +338,23 @@ def check_ollama(model: str = "qwen3:0.6b", pull: bool = False) -> None:
     else:
         log_warn(f"Modelo {model} ausente. Descárgalo con: ollama pull {model} "
                  f"(o re-ejecuta con --pull-model)")
+
+
+def check_ocr() -> None:
+    """Verifica motor OCR PaddleOCR (aviso, no bloquea: degradado elegante)."""
+    try:
+        import importlib.util as _ilu
+
+        if _ilu.find_spec("rapidocr_onnxruntime") is not None:
+            log_ok("Motor OCR rapidocr-onnxruntime disponible (PaddleOCR via ONNX)")
+            return
+        if _ilu.find_spec("paddleocr") is not None:
+            log_ok("Motor OCR paddleocr disponible (clasico)")
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    log_warn("Sin motor OCR: read_image/see_screen responderán OCR_UNAVAILABLE. "
+             "Instala con: pip install rapidocr-onnxruntime pillow")
 
 
 def check_msvc(install: bool = False) -> bool:
@@ -511,6 +528,7 @@ def do_install(args) -> int:
         check_system_libs(venv_py)  # informativo, no bloquea
         ensure_linux_config()
     check_ollama(model=args.model, pull=args.pull_model)
+    check_ocr()
     check_rust(install=args.with_rust)
     if sys.platform != "win32":
         install_bin(venv_py)
@@ -533,7 +551,7 @@ def do_install(args) -> int:
                    "o  python install.py --run-web  (HUD web)")
         else:
             log_ok("Instalacion completa. Abre una terminal nueva y ejecuta:  jarvis")
-        log_info("Agente CPU: qwen3:0.6b (num_ctx 4096, timeout 180s, steps 5). "
+        log_info("Agente local: llama3.2:1b (num_ctx 4096, timeout 180s, steps 5). "
                  "Forzar CPU con GT710:  set CUDA_VISIBLE_DEVICES=  + ollama serve")
     else:
         log_warn("Instalacion con advertencias: revisa los [FAIL] de arriba.")
@@ -629,7 +647,7 @@ def main() -> int:
     parser.add_argument("--run-web", action="store_true", help="lanzar el HUD web (bridge + Next dev)")
     parser.add_argument("--pull-model", action="store_true", help="descargar el modelo Ollama CPU")
     parser.add_argument("--with-rust", action="store_true", help="instalar Rust/Cargo si falta (desktop Tauri)")
-    parser.add_argument("--model", default="qwen3:0.6b", help="modelo Ollama (defecto: qwen3:0.6b)")
+    parser.add_argument("--model", default="llama3.2:1b", help="modelo Ollama (defecto: llama3.2:1b)")
     parser.add_argument("--uninstall", action="store_true", help="desinstalar bin/.desktop/autostart")
     parser.add_argument("--purge", action="store_true", help="con --uninstall, borra settings/state")
     parser.add_argument("--no-autostart", action="store_true", help="no crear autostart")
@@ -642,6 +660,7 @@ def main() -> int:
     if args.check_only:
         ok = check_env()
         check_ollama(model=args.model, pull=False)
+        check_ocr()
         check_rust(install=False)
         return 0 if ok else 2
     if args.uninstall:

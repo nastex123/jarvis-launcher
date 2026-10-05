@@ -19,6 +19,7 @@ from apps.gateway import auth
 from apps.gateway.models import ChatRequest, DecisionRequest, RunModeRequest
 
 from core.agent.ollama import AgentTransportError, OllamaClient
+from core.agent.ocr_store import context_block as _ocr_context_block
 from core.agent.policy import check_shell, redact
 from core.agent.tools import execute_tool, ollama_tools
 from core.config import ConfigManager
@@ -35,7 +36,7 @@ _pairing: dict[str, float] = {}
 def _ollama() -> OllamaClient:
     return OllamaClient(
         base_url=os.environ.get("JARVIS_OLLAMA_URL", "http://localhost:11434"),
-        model=os.environ.get("JARVIS_OLLAMA_MODEL", "qwen3:0.6b"),
+        model=os.environ.get("JARVIS_OLLAMA_MODEL", "llama3.2:1b"),
         timeout_s=int(os.environ.get("JARVIS_OLLAMA_TIMEOUT", "180")),
         think=False,
     )
@@ -101,7 +102,12 @@ def run_mode(body: RunModeRequest, _: dict = Depends(require_auth)) -> dict:
 def chat_turn(body: ChatRequest, _: dict = Depends(require_auth)) -> dict:
     # Turno ligero sin Qt: 1 llamada Ollama + tarjetas de propuesta sin ejecutar.
     client = _ollama()
-    history = list(body.history) + [{"role": "user", "content": body.text}]
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    history = list(body.history)
+    ocr_block = _ocr_context_block(repo_root)
+    if ocr_block:
+        history = [{"role": "system", "content": ocr_block}] + history
+    history = history + [{"role": "user", "content": body.text}]
     try:
         msg = client.chat(history, ollama_tools())
     except AgentTransportError as exc:

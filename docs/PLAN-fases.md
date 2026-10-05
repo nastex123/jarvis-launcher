@@ -21,16 +21,25 @@
 
 - **Objetivo**: "¿qué ves en mi pantalla?" y asistencia contextual
   (leer un error visible, guiar un clic).
-- **Entregables previstos**: tool `see_screen()` (captura vía `QScreen.grab`
-  o `gnome-screenshot`, downscale máx 1280 px + JPEG q70 para caber en
-  contexto); modelo visión `qwen2.5vl:7b` (~5 GB, `ollama pull`) conmutable
-  desde Ajustes; tarjeta de aprobación 🟢 para capturas (son lectura).
-- **Aceptación (borrador)**: describe la ventana enfocada con ≥80 % de
-  acierto en checklist de 10 capturas; latencia < 60 s en CPU.
-- **Dependencias**: ESPEC Fase 2 (payload multimodal `/api/chat` con
-  `images:[base64]`); evaluar RAM (visión 7b ≈ +5 GB residente).
-- **Riesgos**: alucinación de elementos UI (mitigar pidiendo coordenadas
-  relativas + confirmación antes de actuar sobre lo visto).
+- **Estado 2026-10-05 (ADR-016)**: OCR determinista implementado con PaddleOCR
+  local (no visión LLM). Entregables hechos: `core/agent/vision_ocr.py`
+  (RapidOCR ONNX + alterno `paddleocr`, `ocr_available/ocr_image_file/capture_screen`),
+  tools `read_image` + `see_screen` (tarjeta verde), `AGENT_SYS_V4`,
+  UI Qt `Adjuntar`/`Pantalla`, bridge `POST /api/ocr`, botón clip web,
+  `tests/test_agent_ocr.py`, `requirements.txt` opcional. Verificado: OCR real,
+  bridge 200, `compileall` OK.
+- **Entregables previstos (visión LLM, futuro)**: tool `see_screen()` ya existe
+  vía OCR; si se quiere descripción semántica ("qué ventana es"), evaluar modelo
+  visión `qwen2.5vl:7b` (~5 GB) o `glm-ocr:latest` ya instalado (2.2 GB) como
+  fallback conmutable desde Ajustes; tarjeta de aprobación verde para capturas.
+- **Aceptación OCR (hecha)**: imagen 600x200 `HOLA JARVIS 123` -> 1 línea exacta;
+  bridge base64 -> 200; `FILE_NOT_FOUND`/`NOT_AN_IMAGE`/`OCR_UNAVAILABLE` tipados.
+- **Dependencias**: ESPEC addendum 2026-10-05; RAM OCR ONNX ~200-400 MB (no +5 GB).
+- **Riesgos**: OCR no interpreta layout/UI (mitigado: solo texto + confirmación
+  antes de actuar sobre lo visto; alucinación UI queda fuera hasta visión LLM).
+- **Persistencia JSON 2026-10-05 (ADR-017)**: `agent_ocr.jsonl` + `ocr_last.json`
+  + tool `query_ocr` + inyección `[OCR reciente]` en loop/gateway — Llama
+  responde preguntas sin releer la imagen e incluso tras reiniciar.
 
 ## Fase 3 — Web: navegación y extracción
 

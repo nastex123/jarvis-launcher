@@ -5,7 +5,7 @@ Contrato normativo: docs/ESPEC-agente-fase1.md.
 Decisiones: docs/ADR-013 (motor Ollama) y docs/ADR-014 (confirmar-todo).
 """
 
-from core.agent.loop import AGENT_SYS_V1, AGENT_SYS_V2, AGENT_SYS_V3, MAX_STEPS, AgentWorker, run_turn
+from core.agent.loop import AGENT_SYS_V1, AGENT_SYS_V2, AGENT_SYS_V3, AGENT_SYS_V4, AGENT_SYS_V5, MAX_STEPS, AgentWorker, run_turn
 from core.agent.ollama import (
     AgentTransportError,
     ModelMissing,
@@ -20,6 +20,8 @@ __all__ = [
     "AGENT_SYS_V1",
     "AGENT_SYS_V2",
     "AGENT_SYS_V3",
+    "AGENT_SYS_V4",
+    "AGENT_SYS_V5",
     "MAX_STEPS",
     "AgentTransportError",
     "AgentWorker",

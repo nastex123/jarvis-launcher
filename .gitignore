@@ -27,3 +27,5 @@ state.json
 settings.json
 config.linux.json
 agent_log.jsonl
+agent_ocr.jsonl
+ocr_last.json
